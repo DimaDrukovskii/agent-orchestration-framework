@@ -301,202 +301,204 @@
         line-height: 1.8;
       }
 
-      /* Chat demo (additive, не трогает вёрстку лендинга выше) */
-      .chat-fab {
+      /* Агент: один вход, текст и голос в одном окне */
+      .agent-fab {
         position: fixed;
         right: 24px;
         bottom: 24px;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: #e30611;
-        color: #fff;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
         z-index: 999998;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 52px;
+        padding: 0 20px 0 10px;
+        border: none;
+        border-radius: 999px;
+        background: #17171a;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        transition: transform 0.2s ease;
       }
 
-      .chat-modal {
+      .agent-fab:hover {
+        transform: translateY(-2px);
+      }
+
+      .agent-fab:focus-visible,
+      .agent-icon:focus-visible,
+      .agent-send:focus-visible,
+      .agent-bar input:focus-visible,
+      .agent-settings input:focus-visible {
+        outline: 3px solid #e30611;
+        outline-offset: 2px;
+      }
+
+      .agent-fab.is-hidden {
+        display: none;
+      }
+
+      .agent-fab-orb,
+      .agent-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: radial-gradient(circle at 35% 30%, #ff6b63, #e30611);
+      }
+
+      .agent-panel {
         display: none;
         position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.35);
+        right: 24px;
+        bottom: 24px;
         z-index: 999999;
-        align-items: flex-end;
-        justify-content: flex-end;
-        padding: 24px;
-      }
-
-      .chat-modal.open {
-        display: flex;
-      }
-
-      .chat-panel {
-        background: #fff;
         width: 380px;
         max-width: calc(100vw - 32px);
-        height: 560px;
+        height: 600px;
         max-height: calc(100vh - 48px);
-        border-radius: 16px;
-        display: flex;
         flex-direction: column;
         overflow: hidden;
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+        background: #17171a;
+        color: #fff;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
       }
 
-      .chat-head {
-        background: #e30611;
-        color: #fff;
-        padding: 14px 16px;
-        font-weight: 600;
+      .agent-panel.open {
+        display: flex;
+      }
+
+      .agent-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        padding: 14px 16px;
+        border-bottom: 1px solid #26262b;
       }
 
-      .chat-head button {
-        background: none;
+      .agent-id {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .agent-name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .agent-status {
+        font-size: 12px;
+        color: #9a9aa3;
+      }
+
+      .agent-icon {
+        width: 36px;
+        height: 36px;
         border: none;
-        color: #fff;
+        border-radius: 50%;
+        background: none;
+        color: #c9c9d0;
         font-size: 18px;
         cursor: pointer;
       }
 
-      .chat-keyrow {
-        padding: 10px 12px;
-        border-bottom: 1px solid #eee;
-        display: flex;
-        gap: 6px;
+      .agent-icon:hover {
+        background: #26262b;
       }
 
-      .chat-keyrow input {
-        flex: 1;
-        border: 1px solid #ddd;
+      .agent-settings {
+        padding: 8px 16px;
+        border-bottom: 1px solid #26262b;
+        font-size: 12px;
+        color: #9a9aa3;
+      }
+
+      .agent-settings summary {
+        cursor: pointer;
+      }
+
+      .agent-settings input {
+        width: 100%;
+        margin-top: 8px;
+        box-sizing: border-box;
+        border: 1px solid #333;
         border-radius: 6px;
+        background: #0e0e10;
+        color: #fff;
         padding: 6px 10px;
         font-size: 12px;
       }
 
-      .chat-keyrow span {
-        font-size: 11px;
-        color: #888;
-        display: block;
-        margin-top: 4px;
-      }
-
-      .chat-msgs {
+      .agent-log {
         flex: 1;
         overflow-y: auto;
-        padding: 14px;
+        padding: 16px;
         display: flex;
         flex-direction: column;
         gap: 10px;
       }
 
-      .chat-msg {
+      .agent-msg {
         max-width: 85%;
         padding: 9px 13px;
-        border-radius: 12px;
+        border-radius: 14px;
         font-size: 14px;
         line-height: 1.4;
       }
 
-      .chat-msg.user {
+      .agent-msg.user {
         align-self: flex-end;
         background: #e30611;
-        color: #fff;
       }
 
-      .chat-msg.agent {
+      .agent-msg.agent {
         align-self: flex-start;
-        background: #f0f0f0;
-        color: #222;
+        background: #26262b;
       }
 
-      .chat-msg.system {
+      .agent-msg.system {
         align-self: center;
-        background: #fff3cd;
-        color: #7a5b00;
+        background: #3a2f12;
+        color: #f5d68a;
         font-size: 12px;
         border-radius: 999px;
         padding: 6px 12px;
       }
 
-      .chat-inputrow {
+      .agent-voice {
         display: flex;
-        gap: 8px;
-        padding: 12px;
-        border-top: 1px solid #eee;
-      }
-
-      .chat-inputrow input {
-        flex: 1;
-        border: 1px solid #ddd;
-        border-radius: 999px;
-        padding: 10px 14px;
-        font-size: 14px;
-      }
-
-      .chat-inputrow button {
-        background: #e30611;
-        color: #fff;
-        border: none;
-        border-radius: 999px;
-        padding: 10px 18px;
-        cursor: pointer;
-        font-weight: 600;
-      }
-
-      /* Call widget (ElevenLabs-style voice orb), additive */
-      .call-fab {
-        position: fixed;
-        right: 94px;
-        bottom: 24px;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: #222;
-        color: #fff;
-        border: none;
-        font-size: 22px;
-        cursor: pointer;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-        z-index: 999998;
-      }
-
-      .call-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(10, 10, 10, 0.75);
-        z-index: 1000000;
+        flex-direction: column;
         align-items: center;
-        justify-content: center;
+        gap: 10px;
+        padding: 16px;
+        border-top: 1px solid #26262b;
       }
 
-      .call-overlay.open {
-        display: flex;
+      .agent-voice[hidden] {
+        display: none;
       }
 
-      .call-panel {
-        background: #17171a;
-        color: #fff;
-        width: 360px;
-        max-width: calc(100vw - 32px);
-        border-radius: 20px;
-        padding: 32px 24px;
+      .agent-voice-caption {
+        min-height: 36px;
+        font-size: 13px;
+        color: #c9c9d0;
         text-align: center;
       }
 
       .orb {
-        width: 120px;
-        height: 120px;
-        margin: 0 auto 20px;
+        width: 88px;
+        height: 88px;
         border-radius: 50%;
         background: radial-gradient(circle at 35% 30%, #ff6b63, #e30611);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+      }
+
+      .orb.idle {
+        opacity: 0.5;
       }
 
       .orb.listening {
@@ -521,51 +523,74 @@
         100% { filter: hue-rotate(360deg); }
       }
 
-      .call-status { font-size: 14px; color: #aaa; margin-bottom: 6px; }
-      .call-caption { font-size: 15px; min-height: 44px; margin-bottom: 20px; }
+      .agent-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        border-top: 1px solid #26262b;
+      }
 
-      .call-controls { display: flex; gap: 12px; justify-content: center; }
-
-      .call-controls button {
-        border: none;
+      .agent-bar input {
+        flex: 1;
+        min-width: 0;
+        border: 1px solid #333;
         border-radius: 999px;
-        padding: 10px 20px;
+        background: #0e0e10;
+        color: #fff;
+        padding: 10px 14px;
         font-size: 14px;
-        font-weight: 600;
+      }
+
+      .mic {
+        background: #26262b;
+        color: #fff;
+        font-size: 16px;
+      }
+
+      .mic[aria-pressed="true"] {
+        background: #e30611;
+      }
+
+      .mic:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .agent-send {
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+        border: none;
+        border-radius: 50%;
+        background: #fff;
+        color: #17171a;
+        font-size: 16px;
+        font-weight: 700;
         cursor: pointer;
       }
 
-      .call-end { background: #e30611; color: #fff; }
-      .call-keyrow { margin-bottom: 14px; }
-      .call-keyrow input {
-        width: 100%;
-        border: 1px solid #333;
-        background: #0e0e10;
-        color: #fff;
-        border-radius: 6px;
-        padding: 6px 10px;
-        font-size: 12px;
+      .agent-note {
+        margin: 0;
+        padding: 0 16px 12px;
+        min-height: 0;
+        font-size: 11px;
+        color: #7a7a84;
       }
 
-      .call-fallback {
-        display: flex;
-        gap: 8px;
-        margin-top: 14px;
-      }
+      @media (max-width: 480px) {
+        .agent-panel {
+          right: 16px;
+          bottom: 16px;
+          left: 16px;
+          width: auto;
+          max-width: none;
+        }
 
-      .call-fallback input {
-        flex: 1;
-        border-radius: 999px;
-        border: 1px solid #333;
-        background: #0e0e10;
-        color: #fff;
-        padding: 8px 14px;
-        font-size: 14px;
-      }
-
-      .call-fallback button {
-        background: #e30611;
-        color: #fff;
+        .agent-fab {
+          right: 16px;
+          bottom: 16px;
+        }
       }
 
       @media (max-width: 768px) {
@@ -640,7 +665,7 @@
             Удобный и быстрый ии-агент, который легко поможет распознать слова
             из разговора и зафиксировать договоренности.
           </p>
-          <button class="btn-primary" onclick="startChat()">Начать чат</button>
+          <button class="btn-primary" onclick="openAgent()">Начать чат</button>
         </div>
       </div>
     </section>
@@ -776,7 +801,7 @@
       <div class="container">
         <div class="cta-content">
           <h2>Попробовать бесплатно</h2>
-          <button class="btn-cta" onclick="startChat()">Начать чат</button>
+          <button class="btn-cta" onclick="openAgent()">Начать чат</button>
         </div>
       </div>
     </section>
@@ -858,171 +883,130 @@
       </div>
     </footer>
 
-    <!-- Chat demo -->
-    <button class="chat-fab" onclick="startChat()" aria-label="Открыть чат">💬</button>
-    <div class="chat-modal" id="chatModal">
-      <div class="chat-panel">
-        <div class="chat-head">
-          <span>МТС AI-Agent — чат</span>
-          <button onclick="closeChat()" aria-label="Закрыть">✕</button>
+    <!-- Агент: один вход, текст и голос в одном окне -->
+    <button class="agent-fab" id="agentFab" onclick="openAgent()" aria-label="Поговорить с агентом">
+      <span class="agent-fab-orb" aria-hidden="true"></span>
+      <span>Поговорить с агентом</span>
+    </button>
+    <section class="agent-panel" id="agentPanel" aria-label="Агент МТС" aria-hidden="true">
+      <header class="agent-head">
+        <div class="agent-id">
+          <span class="agent-avatar" aria-hidden="true"></span>
+          <div>
+            <div class="agent-name">Алина · МТС</div>
+            <div class="agent-status" id="agentStatus">Онлайн</div>
+          </div>
         </div>
-        <div class="chat-keyrow">
-          <input
-            id="apiKeyInput"
-            type="text"
-            placeholder="API-ключ (X-API-Key)"
-          />
-          <span>Ключ хранится только в этой вкладке (sessionStorage).</span>
-        </div>
-        <div class="chat-msgs" id="chatMsgs"></div>
-        <div class="chat-inputrow">
-          <input
-            id="chatInput"
-            type="text"
-            placeholder="Напишите сообщение…"
-            onkeydown="if(event.key==='Enter') sendChatMessage()"
-          />
-          <button onclick="sendChatMessage()">Отправить</button>
-        </div>
+        <button class="agent-icon" onclick="closeAgent()" aria-label="Закрыть">✕</button>
+      </header>
+      <details class="agent-settings" id="keyDetails">
+        <summary>API-ключ (X-API-Key)</summary>
+        <input id="apiKeyInput" type="text" placeholder="Вставьте ключ" autocomplete="off" />
+      </details>
+      <div class="agent-log" id="agentLog" aria-live="polite"></div>
+      <div class="agent-voice" id="agentVoice" hidden>
+        <div class="orb idle" id="orb"></div>
+        <div class="agent-voice-caption" id="voiceCaption"></div>
       </div>
-    </div>
-
-    <!-- Call widget (голосовой звонок, Web Speech API) -->
-    <button class="call-fab" onclick="startCall()" aria-label="Позвонить агенту">📞</button>
-    <div class="call-overlay" id="callOverlay">
-      <div class="call-panel">
-        <div class="orb" id="callOrb"></div>
-        <div class="call-status" id="callStatus">Соединяем…</div>
-        <div class="call-caption" id="callCaption"></div>
-        <div class="call-keyrow">
-          <input id="callApiKeyInput" type="text" placeholder="API-ключ (X-API-Key)" />
-        </div>
-        <div class="call-controls">
-          <button class="call-end" onclick="endCall()">Завершить звонок</button>
-        </div>
-        <div class="call-fallback" id="callFallback" style="display: none">
-          <input
-            id="callFallbackInput"
-            type="text"
-            placeholder="Голос не распознаётся — напишите сюда…"
-            onkeydown="if(event.key==='Enter') sendCallFallbackText()"
-          />
-          <button onclick="sendCallFallbackText()">→</button>
-        </div>
-      </div>
-    </div>
+      <form class="agent-bar" onsubmit="event.preventDefault(); sendTextMessage();">
+        <button type="button" class="agent-icon mic" id="micBtn" onclick="toggleVoice()" aria-pressed="false" aria-label="Голосовой режим">🎙</button>
+        <input id="agentInput" type="text" placeholder="Напишите сообщение…" autocomplete="off" />
+        <button type="submit" class="agent-send" aria-label="Отправить">↑</button>
+      </form>
+      <p class="agent-note" id="agentNote"></p>
+    </section>
 
     <script>
       const CALLER_PHONE = "+79990000000";
-      const CHAT_SESSION_ID =
+      const SESSION_ID =
         (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "demo-" + Date.now();
-
-      function startChat() {
-        document.getElementById("chatModal").classList.add("open");
-        const keyInput = document.getElementById("apiKeyInput");
-        keyInput.value = sessionStorage.getItem("mts_api_key") || "";
-        if (!document.getElementById("chatMsgs").childElementCount) {
-          addChatMsg("agent", "Здравствуйте! Чем могу помочь?");
-        }
-        document.getElementById("chatInput").focus();
-      }
-
-      function closeChat() {
-        document.getElementById("chatModal").classList.remove("open");
-      }
-
-      function addChatMsg(role, text) {
-        const el = document.createElement("div");
-        el.className = "chat-msg " + role;
-        el.textContent = text;
-        const msgs = document.getElementById("chatMsgs");
-        msgs.appendChild(el);
-        msgs.scrollTop = msgs.scrollHeight;
-      }
-
-      async function sendChatMessage() {
-        const input = document.getElementById("chatInput");
-        const text = input.value.trim();
-        if (!text) return;
-        input.value = "";
-
-        const apiKey = document.getElementById("apiKeyInput").value.trim();
-        sessionStorage.setItem("mts_api_key", apiKey);
-
-        addChatMsg("user", text);
-
-        let response;
-        try {
-          response = await fetch("/api/hermes/dialog", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": apiKey,
-            },
-            body: JSON.stringify({
-              session_id: CHAT_SESSION_ID,
-              caller_phone: CALLER_PHONE,
-              user_message: text,
-            }),
-          });
-        } catch (e) {
-          addChatMsg("system", "Агент временно недоступен. Проверьте подключение к серверу.");
-          return;
-        }
-
-        if (response.status === 401) {
-          addChatMsg("system", "Неверный API-ключ.");
-          return;
-        }
-        if (!response.ok) {
-          addChatMsg("system", "Агент временно недоступен.");
-          return;
-        }
-
-        const data = await response.json();
-        sessionStorage.setItem("mts_last_session_id", CHAT_SESSION_ID);
-        addChatMsg("agent", data.agent_response || "");
-        if (data.transfer) {
-          addChatMsg("system", "Переводим на отдел: " + (data.transfer.department || "специалист"));
-        }
-      }
-
-      // --- Call widget (ElevenLabs-style voice orb, Web Speech API) ---
-      let callRecognition = null;
-      let callActive = false;
       const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-      function setOrbState(state) {
-        const orb = document.getElementById("callOrb");
+      const panel = document.getElementById("agentPanel");
+      const fab = document.getElementById("agentFab");
+      const keyInput = document.getElementById("apiKeyInput");
+      const keyDetails = document.getElementById("keyDetails");
+      const textInput = document.getElementById("agentInput");
+      const log = document.getElementById("agentLog");
+      const micBtn = document.getElementById("micBtn");
+      const voiceBox = document.getElementById("agentVoice");
+      const voiceCaption = document.getElementById("voiceCaption");
+      const orb = document.getElementById("orb");
+      const statusEl = document.getElementById("agentStatus");
+      const noteEl = document.getElementById("agentNote");
+
+      let voiceOn = false;
+      let turnPending = false;
+      let recognition = null;
+
+      function storeGet(key) {
+        try {
+          return sessionStorage.getItem(key) || "";
+        } catch (e) {
+          return "";
+        }
+      }
+
+      function storeSet(key, value) {
+        try {
+          sessionStorage.setItem(key, value);
+        } catch (e) {}
+      }
+
+      keyInput.value = storeGet("mts_api_key");
+      keyDetails.open = !keyInput.value;
+      keyInput.addEventListener("change", () => storeSet("mts_api_key", keyInput.value.trim()));
+
+      if (!SpeechRecognitionImpl) {
+        micBtn.disabled = true;
+        micBtn.title = "Голос не поддерживается этим браузером";
+        noteEl.textContent = "Голос работает в Chrome и Edge. Текстовый чат — везде.";
+      }
+
+      function openAgent() {
+        panel.classList.add("open");
+        panel.setAttribute("aria-hidden", "false");
+        fab.classList.add("is-hidden");
+        if (!log.childElementCount) addMessage("agent", "Здравствуйте! Чем могу помочь?");
+        textInput.focus();
+      }
+
+      function closeAgent() {
+        stopVoice();
+        panel.classList.remove("open");
+        panel.setAttribute("aria-hidden", "true");
+        fab.classList.remove("is-hidden");
+      }
+
+      function addMessage(role, text) {
+        const el = document.createElement("div");
+        el.className = "agent-msg " + role;
+        el.textContent = text;
+        log.appendChild(el);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function setOrb(state) {
         orb.className = "orb " + state;
       }
 
-      function setCallCaption(text) {
-        document.getElementById("callCaption").textContent = text;
+      function fail(message) {
+        addMessage("system", message);
+        setStatus("Ошибка");
+        return null;
       }
 
-      function speak(text, onEnd) {
-        if (!window.speechSynthesis) {
-          onEnd && onEnd();
-          return;
-        }
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = "ru-RU";
-        const ruVoice = speechSynthesis.getVoices().find((v) => v.lang.startsWith("ru"));
-        if (ruVoice) utter.voice = ruVoice;
-        utter.onend = onEnd || null;
-        setOrbState("speaking");
-        document.getElementById("callStatus").textContent = "Оператор говорит…";
-        speechSynthesis.speak(utter);
-      }
+      async function askAgent(text) {
+        addMessage("user", text);
+        setStatus("Думает…");
+        setOrb("thinking");
 
-      async function sendCallTurn(text) {
-        setCallCaption("Вы: " + text);
-        setOrbState("thinking");
-        document.getElementById("callStatus").textContent = "Обрабатываю…";
-
-        const apiKey = document.getElementById("callApiKeyInput").value.trim();
-        sessionStorage.setItem("mts_api_key", apiKey);
+        const apiKey = keyInput.value.trim();
+        storeSet("mts_api_key", apiKey);
 
         let response;
         try {
@@ -1030,102 +1014,141 @@
             method: "POST",
             headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
             body: JSON.stringify({
-              session_id: CHAT_SESSION_ID,
+              session_id: SESSION_ID,
               caller_phone: CALLER_PHONE,
               user_message: text,
             }),
           });
         } catch (e) {
-          setCallCaption("Агент временно недоступен.");
-          speak("Извините, связь прервалась.", () => stopListening());
-          return;
+          return fail("Агент временно недоступен. Проверьте подключение к серверу.");
         }
 
-        if (!response.ok) {
-          const msg = response.status === 401 ? "Неверный API-ключ." : "Агент временно недоступен.";
-          setCallCaption(msg);
-          speak(msg.replace("API-ключ", "ключ доступа"), () => stopListening());
-          return;
-        }
+        if (response.status === 401) return fail("Неверный API-ключ.");
+        if (!response.ok) return fail("Агент временно недоступен.");
 
         const data = await response.json();
-        sessionStorage.setItem("mts_last_session_id", CHAT_SESSION_ID);
-        setCallCaption(data.agent_response || "");
-        speak(data.agent_response || "", () => {
-          if (data.transfer) {
-            document.getElementById("callStatus").textContent =
-              "Переводим на отдел: " + (data.transfer.department || "специалист");
-          } else if (callActive) {
-            startListening();
-          }
+        storeSet("mts_last_session_id", SESSION_ID);
+        const reply = data.agent_response || "";
+        addMessage("agent", reply);
+        if (data.transfer) {
+          addMessage("system", "Переводим на отдел: " + (data.transfer.department || "специалист"));
+        }
+        setStatus("Онлайн");
+        return { reply, transfer: data.transfer };
+      }
+
+      async function sendTextMessage() {
+        const text = textInput.value.trim();
+        if (!text) return;
+        textInput.value = "";
+        await askAgent(text);
+      }
+
+      function speak(text) {
+        return new Promise((resolve) => {
+          if (!window.speechSynthesis) return resolve();
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.lang = "ru-RU";
+          const ruVoice = speechSynthesis.getVoices().find((v) => v.lang.startsWith("ru"));
+          if (ruVoice) utter.voice = ruVoice;
+          utter.onend = () => resolve();
+          utter.onerror = () => resolve();
+          setOrb("speaking");
+          setStatus("Говорит…");
+          speechSynthesis.speak(utter);
         });
       }
 
-      function startListening() {
-        if (!SpeechRecognitionImpl || !callActive) return;
-        callRecognition = new SpeechRecognitionImpl();
-        callRecognition.lang = "ru-RU";
-        callRecognition.interimResults = false;
-        callRecognition.maxAlternatives = 1;
-
-        callRecognition.onresult = (event) => {
-          const text = event.results[0][0].transcript;
-          sendCallTurn(text);
-        };
-        callRecognition.onerror = () => {
-          if (callActive) document.getElementById("callFallback").style.display = "flex";
-        };
-        callRecognition.onend = () => {
-          if (callActive) setOrbState("listening");
-        };
-
-        setOrbState("listening");
-        document.getElementById("callStatus").textContent = "Слушаю…";
+      function stopRecognition() {
+        if (!recognition) return;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
         try {
-          callRecognition.start();
+          recognition.abort();
+        } catch (e) {}
+        recognition = null;
+      }
+
+      function startListening() {
+        if (!voiceOn || turnPending) return;
+        stopRecognition();
+        recognition = new SpeechRecognitionImpl();
+        recognition.lang = "ru-RU";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event) => handleVoiceTurn(event.results[0][0].transcript);
+        recognition.onerror = (event) => {
+          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+            noteEl.textContent = "Доступ к микрофону запрещён. Разрешите его в настройках браузера.";
+            stopVoice();
+          }
+        };
+        recognition.onend = () => {
+          if (voiceOn && !turnPending) startListening();
+        };
+
+        setOrb("listening");
+        setStatus("Слушаю…");
+        try {
+          recognition.start();
         } catch (e) {
-          document.getElementById("callFallback").style.display = "flex";
+          stopVoice();
         }
       }
 
-      function stopListening() {
-        if (callRecognition) {
-          callRecognition.onend = null;
-          callRecognition.stop();
+      async function handleVoiceTurn(text) {
+        turnPending = true;
+        stopRecognition();
+        voiceCaption.textContent = "Вы: " + text;
+
+        const result = await askAgent(text);
+        turnPending = false;
+        if (!voiceOn) return;
+        if (!result) {
+          startListening();
+          return;
+        }
+
+        voiceCaption.textContent = result.reply;
+        await speak(result.reply);
+        if (!voiceOn) return;
+        if (result.transfer) {
+          stopVoice();
+          setStatus("Переводим на отдел");
+          return;
+        }
+        startListening();
+      }
+
+      function toggleVoice() {
+        if (voiceOn) {
+          stopVoice();
+        } else {
+          startVoice();
         }
       }
 
-      function sendCallFallbackText() {
-        const input = document.getElementById("callFallbackInput");
-        const text = input.value.trim();
-        if (!text) return;
-        input.value = "";
-        sendCallTurn(text);
+      function startVoice() {
+        if (!SpeechRecognitionImpl) return;
+        voiceOn = true;
+        micBtn.setAttribute("aria-pressed", "true");
+        voiceBox.hidden = false;
+        voiceCaption.textContent = "";
+        noteEl.textContent = "";
+        speak("Здравствуйте! Чем могу помочь?").then(startListening);
       }
 
-      function startCall() {
-        callActive = true;
-        document.getElementById("callOverlay").classList.add("open");
-        document.getElementById("callApiKeyInput").value = sessionStorage.getItem("mts_api_key") || "";
-        document.getElementById("callFallback").style.display = SpeechRecognitionImpl ? "none" : "flex";
-        setCallCaption("");
-        setOrbState("thinking");
-        document.getElementById("callStatus").textContent = "Соединяем…";
-
-        setTimeout(() => {
-          if (!callActive) return;
-          document.getElementById("callStatus").textContent = "На линии";
-          speak("Здравствуйте! Чем могу помочь?", () => {
-            if (callActive) startListening();
-          });
-        }, 900);
-      }
-
-      function endCall() {
-        callActive = false;
-        stopListening();
+      function stopVoice() {
+        voiceOn = false;
+        turnPending = false;
+        stopRecognition();
         if (window.speechSynthesis) speechSynthesis.cancel();
-        document.getElementById("callOverlay").classList.remove("open");
+        micBtn.setAttribute("aria-pressed", "false");
+        voiceBox.hidden = true;
+        setOrb("idle");
+        setStatus("Онлайн");
       }
 
       function openSocial(platform) {
