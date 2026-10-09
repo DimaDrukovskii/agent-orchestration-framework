@@ -1,669 +1,647 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Автоответ на звонки — МТС</title>
-<style>
-  :root{
-    --color-bg: #F6F6F4;
-    --color-surface: #FFFFFF;
-    --color-surface-raised: #FBFBFA;
-    --color-border: #E7E5DF;
-    --color-text: #17171A;
-    --color-text-dim: #6B6A64;
-    --color-accent: #E30611;
-    --color-accent-dim: #FDE6E5;
-    --color-ok: #1AA368;
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>МТС AI-Agent</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    --text-base: clamp(1rem, 0.94rem + 0.3vw, 1.08rem);
-    --text-h1: clamp(2.1rem, 1.4rem + 3vw, 3.6rem);
-    --text-h2: clamp(1.5rem, 1.2rem + 1.4vw, 2.1rem);
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+      }
 
-    --space-section: clamp(3rem, 2.4rem + 3vw, 6rem);
-    --radius: 18px;
-    --duration-fast: 150ms;
-    --duration-normal: 300ms;
-    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-    --font-display: 'Golos Text', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  }
+      /* Header */
+      header {
+        background: #fff;
+        padding: 15px 0;
+        border-bottom: 1px solid #e0e0e0;
+      }
 
-  *{box-sizing:border-box;}
-  body{
-    margin:0; background:var(--color-bg); color:var(--color-text);
-    font-family:var(--font-display); font-size:var(--text-base); line-height:1.5;
-    -webkit-font-smoothing:antialiased;
-  }
-  a{color:inherit;}
-  h1,h2,h3{font-weight:700; letter-spacing:-0.01em; margin:0;}
-  .wrap{max-width:1180px; margin:0 auto; padding:0 24px;}
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
 
-  /* ---- mts-style site header (visual context: this lives inside mts.ru) ---- */
-  .mts-topbar{background:#fff; border-bottom:1px solid var(--color-border);}
-  .mts-topbar .row1{display:flex; justify-content:space-between; align-items:center; padding:10px 24px; font-size:0.82rem; color:var(--color-text-dim); max-width:1180px; margin:0 auto;}
-  .mts-topbar .row1 .tabs{display:flex; gap:22px;}
-  .mts-topbar .row1 .tabs span:first-child{color:var(--color-text); font-weight:600;}
-  .mts-topbar .row2{display:flex; align-items:center; justify-content:space-between; padding:14px 24px; max-width:1180px; margin:0 auto; border-top:1px solid var(--color-border);}
-  .mts-logo{display:flex; gap:2px;}
-  .mts-logo span{width:30px; height:30px; background:var(--color-accent); color:#fff; font-weight:800; font-size:0.95rem; display:flex; align-items:center; justify-content:center; border-radius:3px;}
-  .mts-nav{display:flex; gap:26px; font-size:0.9rem; font-weight:600;}
-  .mts-nav span.pill{background:#1A1A2E; color:#fff; border-radius:999px; padding:6px 12px; font-size:0.78rem;}
-  .mts-right{display:flex; gap:14px; align-items:center;}
-  .mts-search{font-size:0.85rem; color:var(--color-text-dim); border:1px solid var(--color-border); border-radius:999px; padding:9px 18px;}
-  .mts-support{background:#1A1A2E; color:#fff; border-radius:999px; padding:9px 18px; font-size:0.8rem; font-weight:700;}
-  @media (max-width:860px){ .mts-nav, .mts-topbar .row1{display:none;} }
+      .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
 
-  .embed-strip{background:#fff; border-bottom:1px solid var(--color-border); padding:10px 0;}
-  .embed-strip .wrap{display:flex; align-items:center; gap:10px; font-size:0.78rem; color:var(--color-text-dim);}
-  .embed-strip .dot{width:7px; height:7px; border-radius:50%; background:var(--color-ok);}
+      .breadcrumbs {
+        display: flex;
+        gap: 8px;
+        font-size: 14px;
+        color: #666;
+      }
 
-  /* ---- hero ---- */
-  section.hero{padding: var(--space-section) 0 calc(var(--space-section) * 0.6); background:#fff;}
-  .hero-grid{display:grid; grid-template-columns:1.2fr 1fr; gap:48px; align-items:center;}
-  @media (max-width:900px){ .hero-grid{grid-template-columns:1fr;} }
-  .eyebrow{display:inline-block; font-size:0.78rem; font-weight:700; color:var(--color-accent); background:var(--color-accent-dim); border-radius:999px; padding:6px 14px; margin-bottom:18px;}
-  h1.headline{font-size:var(--text-h1); line-height:1.08;}
-  .hero-sub{color:var(--color-text-dim); max-width:46ch; margin-top:18px; font-size:1.05rem;}
-  .hero-ctas{display:flex; gap:14px; margin-top:30px; flex-wrap:wrap;}
-  .btn-primary, .btn-secondary{border-radius:999px; padding:13px 26px; font-size:0.95rem; font-weight:700; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:8px; transition:transform var(--duration-fast) var(--ease-out-expo);}
-  .btn-primary{background:var(--color-accent); color:#fff;}
-  .btn-primary:hover{transform:translateY(-2px);}
-  .btn-secondary{background:#fff; color:var(--color-text); border:1px solid var(--color-border);}
+      .breadcrumbs a {
+        color: #666;
+        text-decoration: none;
+        transition: color 0.3s;
+      }
 
-  .hero-card{background:var(--color-surface-raised); border:1px solid var(--color-border); border-radius:var(--radius); padding:26px;}
-  .hero-card .name{font-weight:700; font-size:1.05rem;}
-  .hero-card .role{color:var(--color-text-dim); font-size:0.85rem; margin-top:2px;}
-  .hero-card p{margin-top:14px; font-size:0.92rem; color:var(--color-text-dim); font-style:italic; border-left:2px solid var(--color-accent); padding-left:14px;}
+      .breadcrumbs a:hover {
+        color: #e30611;
+      }
 
-  section{padding:var(--space-section) 0;}
-  .section-label{font-size:0.78rem; font-weight:700; color:var(--color-accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; display:block;}
-  .section-title{font-size:var(--text-h2); max-width:26ch;}
-  .section-sub{color:var(--color-text-dim); max-width:60ch; margin-top:12px;}
+      .breadcrumbs span {
+        color: #999;
+      }
 
-  .steps{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:40px;}
-  @media (max-width:900px){ .steps{grid-template-columns:1fr 1fr;} }
-  @media (max-width:560px){ .steps{grid-template-columns:1fr;} }
-  .step{background:#fff; border:1px solid var(--color-border); border-radius:var(--radius); padding:22px;}
-  .step .num{font-weight:800; color:var(--color-accent); font-size:0.85rem;}
-  .step h3{margin-top:12px; font-size:1.02rem;}
-  .step p{color:var(--color-text-dim); font-size:0.87rem; margin-top:8px;}
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
 
-  /* ---- call demo (looks like a real inbound call) ---- */
-  section.demo{background:#fff; border-top:1px solid var(--color-border); border-bottom:1px solid var(--color-border);}
-  .demo-center{display:flex; justify-content:center; margin-top:40px;}
-  .phone{
-    width:100%; max-width:440px; background:var(--color-surface-raised); border:1px solid var(--color-border); border-radius:28px;
-    padding:20px; height:580px; display:flex; flex-direction:column; box-shadow:0 20px 50px -24px rgba(0,0,0,0.25);
-  }
-  .phone-head{display:flex; align-items:center; gap:10px; padding:4px 6px 14px; border-bottom:1px solid var(--color-border);}
-  .phone-head .avatar{width:38px; height:38px; border-radius:50%; background:var(--color-accent-dim); color:var(--color-accent); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.9rem;}
-  .phone-head .who b{display:block; font-size:0.92rem;}
-  .phone-head .who span{display:block; font-size:0.76rem; color:var(--color-text-dim);}
-  .phone-head .who span.live{color:var(--color-ok); font-weight:600;}
-  .msgs{flex:1; overflow-y:auto; padding:14px 4px; display:flex; flex-direction:column; gap:10px;}
-  .msg{max-width:84%; padding:10px 14px; border-radius:14px; font-size:0.9rem; line-height:1.45; opacity:0; transform:translateY(6px); animation: fadeUp var(--duration-normal) var(--ease-out-expo) forwards;}
-  @keyframes fadeUp{ to{opacity:1; transform:translateY(0);} }
-  .msg.agent{align-self:flex-start; background:#fff; border:1px solid var(--color-border); border-radius:14px 14px 14px 3px;}
-  .msg.user{align-self:flex-end; background:var(--color-accent); color:#fff; border-radius:14px 14px 3px 14px;}
-  .msg.system{align-self:center; background:none; color:var(--color-text-dim); font-size:0.74rem; padding:5px 12px; border:1px solid var(--color-border); border-radius:999px;}
-  .typing{align-self:flex-start; display:flex; gap:4px; padding:12px 14px; background:#fff; border:1px solid var(--color-border); border-radius:14px 14px 14px 3px;}
-  .typing span{width:6px; height:6px; border-radius:50%; background:var(--color-text-dim); animation: blink 1.1s infinite ease-in-out;}
-  .typing span:nth-child(2){animation-delay:0.15s;}
-  .typing span:nth-child(3){animation-delay:0.3s;}
-  @keyframes blink{ 0%,80%,100%{opacity:0.25;} 40%{opacity:1;} }
-  .inputrow{display:flex; gap:8px; padding-top:12px; border-top:1px solid var(--color-border);}
-  .inputrow input{flex:1; background:#fff; border:1px solid var(--color-border); border-radius:999px; padding:11px 16px; color:var(--color-text); font-family:inherit; font-size:0.9rem; outline:none;}
-  .inputrow input:focus{border-color:var(--color-accent);}
-  .inputrow button{width:42px; height:42px; border-radius:999px; background:var(--color-accent); border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
-  .suggestions{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;}
-  .suggestion{font-size:0.78rem; color:var(--color-text-dim); border:1px solid var(--color-border); border-radius:999px; padding:7px 13px; cursor:pointer; background:#fff; font-family:inherit;}
-  .suggestion:hover{border-color:var(--color-accent); color:var(--color-text);}
+      .search {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #666;
+        cursor: pointer;
+        transition: color 0.3s;
+      }
 
-  .callstart{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center;}
-  .callstart .ring{width:84px; height:84px; border-radius:50%; background:var(--color-accent); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 0 0 0 var(--color-accent-dim); transition:transform var(--duration-fast);}
-  .callstart .ring:hover{transform:scale(1.05);}
-  .callstart .ring svg{width:30px; height:30px;}
-  .callstart p{color:var(--color-text-dim); font-size:0.88rem; max-width:26ch;}
+      .search:hover {
+        color: #e30611;
+      }
 
-  /* ---- generic content sections ---- */
-  .arch-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:36px;}
-  @media (max-width:900px){ .arch-grid{grid-template-columns:1fr 1fr;} }
-  @media (max-width:560px){ .arch-grid{grid-template-columns:1fr;} }
-  .arch-card{background:#fff; border:1px solid var(--color-border); border-radius:var(--radius); padding:20px;}
-  .arch-card .tag{font-size:0.72rem; font-weight:700; color:var(--color-accent); text-transform:uppercase; letter-spacing:0.06em;}
-  .arch-card h3{margin-top:10px; font-size:0.98rem;}
-  .arch-card p{color:var(--color-text-dim); font-size:0.85rem; margin-top:8px;}
+      .btn-login {
+        background: #e30611;
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
 
-  .kb-tabs{display:flex; gap:10px; margin-top:34px; flex-wrap:wrap; border-bottom:1px solid var(--color-border);}
-  .kb-tab{background:none; border:none; color:var(--color-text-dim); font-family:inherit; font-size:0.86rem; padding:11px 4px; cursor:pointer; border-bottom:2px solid transparent; margin-right:14px;}
-  .kb-tab.active{color:var(--color-text); border-color:var(--color-accent);}
-  .kb-panel{display:none; margin-top:22px; background:#fff; border:1px solid var(--color-border); border-radius:var(--radius); padding:26px;}
-  .kb-panel.active{display:block;}
-  .kb-panel h3{font-size:1.02rem; margin-bottom:12px;}
-  .kb-panel .kb-body{color:var(--color-text-dim); font-size:0.88rem; white-space:pre-wrap;}
+      .btn-login:hover {
+        background: #c00510;
+      }
 
-  .internal{background:var(--color-bg);}
-  .internal-badge{font-size:0.74rem; color:var(--color-text-dim); border:1px dashed var(--color-border); border-radius:999px; padding:5px 12px; display:inline-block; margin-bottom:14px;}
+      /* Hero Section */
+      .hero {
+        background: #e30611;
+        color: white;
+        padding: 80px 0;
+      }
 
-  footer{border-top:1px solid var(--color-border); padding:36px 0; color:var(--color-text-dim); font-size:0.84rem; background:#fff;}
-  footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
+      .hero-content {
+        max-width: 600px;
+      }
 
-  /* ---- voice chat bubble ---- */
-  .voice-bubble{position:fixed; right:24px; bottom:24px; z-index:999; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--color-border); border-radius:999px; padding:8px 18px 8px 8px; cursor:pointer; box-shadow:0 14px 34px rgba(0,0,0,0.18); transition:transform var(--duration-fast) var(--ease-out-expo);}
-  .voice-bubble:hover{transform:translateY(-2px);}
-  .voice-bubble .orb-mini{width:34px; height:34px; border-radius:50%; flex-shrink:0; background:conic-gradient(from 0deg, var(--color-accent), #ff9b86, #ffd7cb, var(--color-accent)); animation: spin 5s linear infinite; position:relative;}
-  .voice-bubble .orb-mini::after{content:""; position:absolute; inset:3px; border-radius:50%; background:#fff;}
-  .voice-bubble span{font-size:0.85rem; font-weight:700; color:var(--color-text);}
-  @keyframes spin{ to{ transform:rotate(360deg); } }
+      .hero h1 {
+        font-size: 48px;
+        font-weight: 700;
+        margin-bottom: 20px;
+        letter-spacing: 1px;
+      }
 
-  .voice-overlay{position:fixed; inset:0; z-index:1000; background:rgba(20,18,16,0.45); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:20px;}
-  .voice-overlay.open{display:flex;}
-  .voice-panel{width:100%; max-width:420px; background:#fff; border:1px solid var(--color-border); border-radius:28px; padding:36px 28px 28px; text-align:center; position:relative; box-shadow:0 40px 100px -20px rgba(0,0,0,0.3);}
-  .voice-close{position:absolute; top:16px; right:16px; width:32px; height:32px; border-radius:50%; background:var(--color-surface-raised); border:1px solid var(--color-border); color:var(--color-text-dim); cursor:pointer; font-size:16px; line-height:1;}
-  .voice-brand{font-size:0.82rem; color:var(--color-text-dim); margin-bottom:22px; font-weight:600;}
-  .orb-big{width:140px; height:140px; border-radius:50%; margin:0 auto 22px; background:conic-gradient(from 90deg, var(--color-accent), #ff9b86, #ffe3db, var(--color-accent)); animation: spin 7s linear infinite; box-shadow:0 0 0 0 var(--color-accent-dim); transition:box-shadow var(--duration-normal) var(--ease-out-expo);}
-  .orb-big.listening{ animation-duration:3s; box-shadow:0 0 0 14px var(--color-accent-dim); }
-  .orb-big.thinking{ animation-duration:1.4s; }
-  .orb-big.speaking{ animation-duration:2s; box-shadow:0 0 0 10px var(--color-accent-dim); }
-  .voice-status{font-size:1.05rem; font-weight:700; min-height:1.4em;}
-  .voice-sub{font-size:0.85rem; color:var(--color-text-dim); margin-top:6px; min-height:1.4em;}
-  .voice-transcript{margin-top:22px; max-height:160px; overflow-y:auto; text-align:left; display:flex; flex-direction:column; gap:8px; padding-right:4px;}
-  .voice-line{font-size:0.85rem; padding:9px 12px; border-radius:10px; background:var(--color-surface-raised); border:1px solid var(--color-border);}
-  .voice-line.user{align-self:flex-end; background:var(--color-accent-dim); border-color:transparent; max-width:85%;}
-  .voice-line.agent{align-self:flex-start; max-width:85%;}
-  .voice-controls{display:flex; justify-content:center; gap:14px; margin-top:24px;}
-  .voice-mic, .voice-end{width:54px; height:54px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:transform var(--duration-fast) var(--ease-out-expo);}
-  .voice-mic{background:var(--color-accent); color:#fff;}
-  .voice-mic.active{background:var(--color-accent-dim); color:var(--color-accent);}
-  .voice-end{background:var(--color-surface-raised); border:1px solid var(--color-border); color:var(--color-text-dim);}
-  .voice-fallback{margin-top:18px; display:flex; gap:8px;}
-  .voice-fallback input{flex:1; background:var(--color-surface-raised); border:1px solid var(--color-border); border-radius:999px; padding:10px 16px; color:var(--color-text); font-family:inherit; font-size:0.85rem; outline:none;}
-  .voice-fallback button{background:var(--color-accent); border:none; border-radius:999px; color:#fff; padding:0 18px; cursor:pointer; font-size:0.85rem; font-weight:700;}
-</style>
-</head>
-<body>
+      .hero p {
+        font-size: 18px;
+        line-height: 1.6;
+        margin-bottom: 40px;
+        opacity: 0.95;
+      }
 
-<div class="mts-topbar">
-  <div class="row1">
-    <div class="tabs"><span>Частным лицам</span><span>Бизнесу</span><span>Госзаказчикам</span></div>
-    <div>Москва и Московская область</div>
-  </div>
-  <div class="row2">
-    <div class="mts-logo"><span>М</span><span>Т</span><span>С</span></div>
-    <div class="mts-nav">
-      <span>Мобильная связь</span><span>Для дома</span><span>Оплата и финансы</span><span>Сервисы</span>
-      <span class="pill">УЖЕ 5G</span>
-    </div>
-    <div class="mts-right"><span class="mts-search">Поиск</span><span class="mts-support">Поддержка</span></div>
-  </div>
-</div>
+      .btn-primary {
+        background: white;
+        color: #e30611;
+        border: none;
+        padding: 16px 40px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
 
-<div class="embed-strip">
-  <div class="wrap"><span class="dot"></span> Сервис подключён к линии «ТехноСтрим» · встраивается в карточку бизнеса на mts.ru так же, как остальные сервисы поддержки</div>
-</div>
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
 
-<section class="hero wrap">
-  <div class="hero-grid">
-    <div>
-      <span class="eyebrow">Для бизнес-линий МТС</span>
-      <h1 class="headline">Звонок клиента не остаётся без ответа — даже когда никто не берёт трубку.</h1>
-      <p class="hero-sub">Когда на линии бизнеса никто не отвечает, звонок принимает дежурный оператор поддержки: отвечает по базе знаний компании, проверяет счёт и при необходимости переводит на нужного специалиста.</p>
-      <div class="hero-ctas">
-        <a class="btn-primary" href="#demo">Позвонить и проверить →</a>
-        <a class="btn-secondary" href="#knowledge">База знаний линии</a>
-      </div>
-    </div>
-    <div class="hero-card">
-      <div class="name">Иван Петров, 42</div>
-      <div class="role">Владелец ООО «ТехноСтрим» — IT-аутсорсинг</div>
-      <p>«Весь день в разъездах и совещаниях. Боюсь пропустить важного клиента — но и сидеть на телефоне не могу.»</p>
-    </div>
-  </div>
-</section>
+      /* Features Section */
+      .features {
+        background: #f5f5f5;
+        padding: 80px 0;
+      }
 
-<section id="how" class="wrap">
-  <span class="section-label">Как это работает</span>
-  <h2 class="section-title">От входящего звонка до решённого вопроса</h2>
-  <p class="section-sub">Линия отвечает сразу, разбирается в вопросе и либо закрывает его сама, либо честно переводит на человека.</p>
-  <div class="steps">
-    <div class="step"><span class="num">01</span><h3>Звонок принят</h3><p>Абонент слышит оператора линии «ТехноСтрим» в течение пары секунд, без гудков в пустоту.</p></div>
-    <div class="step"><span class="num">02</span><h3>Уточняет детали</h3><p>Задаёт пару вопросов по делу и сверяется с базой знаний компании, не придумывая ответы.</p></div>
-    <div class="step"><span class="num">03</span><h3>Проверяет данные</h3><p>Для вопросов по счёту — смотрит состояние лицевого счёта, прежде чем отвечать.</p></div>
-    <div class="step"><span class="num">04</span><h3>Решает или переводит</h3><p>Закрывает вопрос сразу либо честно переводит на нужного специалиста — без лишних кругов.</p></div>
-  </div>
-</section>
+      .features h2 {
+        text-align: center;
+        font-size: 36px;
+        font-weight: 700;
+        margin-bottom: 60px;
+        color: #222;
+      }
 
-<section id="demo" class="demo">
-  <div class="wrap">
-    <span class="section-label">Проверьте сами</span>
-    <h2 class="section-title">Позвоните «ТехноСтрим» прямо здесь</h2>
-    <p class="section-sub">Нажмите на кнопку вызова — соединение имитирует реальный звонок на линию поддержки.</p>
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 30px;
+      }
 
-    <div class="demo-center">
-      <div class="phone">
-        <div class="phone-head">
-          <div class="avatar">ТС</div>
-          <div class="who"><b>ООО «ТехноСтрим»</b><span id="phone-status">Линия поддержки</span></div>
-        </div>
-        <div id="call-area" class="callstart">
-          <div class="ring" id="call-ring" aria-label="Позвонить">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1v3.4c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .8-.2 1l-2.2 2.3z" fill="#fff"/></svg>
+      .feature-card {
+        background: white;
+        padding: 40px 30px;
+        border-radius: 12px;
+        transition: all 0.3s;
+        cursor: pointer;
+      }
+
+      .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+      }
+
+      .feature-icon {
+        width: 60px;
+        height: 60px;
+        background: #e0e0e0;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .feature-card h3 {
+        font-size: 22px;
+        font-weight: 700;
+        margin-bottom: 16px;
+        color: #222;
+      }
+
+      .feature-card p {
+        font-size: 16px;
+        color: #666;
+        line-height: 1.6;
+      }
+
+      /* CTA Section */
+      .cta {
+        background: white;
+        padding: 60px 0;
+        text-align: center;
+      }
+
+      .cta-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+        flex-wrap: wrap;
+      }
+
+      .cta h2 {
+        font-size: 32px;
+        font-weight: 700;
+        color: #222;
+      }
+
+      .btn-cta {
+        background: #e30611;
+        color: white;
+        border: none;
+        padding: 16px 48px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .btn-cta:hover {
+        background: #c00510;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(227, 6, 17, 0.3);
+      }
+
+      /* Footer */
+      footer {
+        background: #2c2c2c;
+        color: white;
+        padding: 60px 0 30px;
+      }
+
+      .footer-content {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 60px;
+        margin-bottom: 40px;
+      }
+
+      .footer-info h3 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .footer-info p {
+        font-size: 14px;
+        line-height: 1.8;
+        color: #b0b0b0;
+        max-width: 500px;
+      }
+
+      .footer-social h3 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+
+      .social-icons {
+        display: flex;
+        gap: 16px;
+      }
+
+      .social-icon {
+        width: 40px;
+        height: 40px;
+        background: #404040;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .social-icon:hover {
+        background: #e30611;
+        transform: translateY(-3px);
+      }
+
+      .social-icon svg {
+        width: 20px;
+        height: 20px;
+        fill: white;
+      }
+
+      .footer-bottom {
+        border-top: 1px solid #404040;
+        padding-top: 30px;
+        font-size: 12px;
+        color: #808080;
+        line-height: 1.8;
+      }
+
+      @media (max-width: 768px) {
+        .hero h1 {
+          font-size: 32px;
+        }
+
+        .features h2 {
+          font-size: 28px;
+        }
+
+        .features-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .footer-content {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+
+        .cta h2 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header -->
+    <header>
+      <div class="container">
+        <div class="header-content">
+          <div class="breadcrumbs">
+            <a href="#">Главная</a>
+            <span>›</span>
+            <a href="#">Бизнесу</a>
+            <span>›</span>
+            <a href="#">Тарифы и услуги</a>
+            <span>›</span>
+            <a href="#">Фиксированная телефония и интернет</a>
+            <span>›</span>
+            <a href="#">Интернет-решения</a>
+            <span>›</span>
+            <span>МТС AI-Agent</span>
           </div>
-          <p>Нажмите, чтобы позвонить на линию поддержки «ТехноСтрим»</p>
+          <div class="header-actions">
+            <div class="search">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+              <span>Поиск</span>
+            </div>
+            <button class="btn-login">ВХОД</button>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-</section>
+    </header>
 
-<section id="knowledge" class="wrap">
-  <span class="section-label">База знаний линии</span>
-  <h2 class="section-title">Чем оператор линии реально располагает</h2>
-  <p class="section-sub">Ровно то, чем оператор пользуется при разговоре — без домыслов и выдуманных цифр.</p>
-  <div class="kb-tabs" id="kb-tabs"></div>
-  <div id="kb-panels"></div>
-</section>
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-content">
+          <h1>МТС AI-AGENT</h1>
+          <p>
+            Удобный и быстрый ии-агент, который легко поможет распознать слова
+            из разговора и зафиксировать договоренности.
+          </p>
+          <button class="btn-primary" onclick="startChat()">Начать чат</button>
+        </div>
+      </div>
+    </section>
 
-<section class="internal wrap">
-  <span class="internal-badge">Техническая часть · для команды</span>
-  <h2 class="section-title">Устройство сервиса</h2>
-  <p class="section-sub">Единая точка входа для подключения к инфраструктуре МТС, без хранения состояния в памяти процесса.</p>
-  <div class="arch-grid">
-    <div class="arch-card"><span class="tag">Подключение</span><h3>Один контракт на вход</h3><p>МТС направляет реплику абонента на единый эндпоинт по ключу доступа — без отдельной регистрации на нашей стороне.</p></div>
-    <div class="arch-card"><span class="tag">Устойчивость</span><h3>Любой инстанс отвечает на любой запрос</h3><p>История разговора хранится отдельно от процесса — можно поднять несколько реплик за балансировщиком.</p></div>
-    <div class="arch-card"><span class="tag">Под нагрузку</span><h3>Очередь на пиковую нагрузку</h3><p>Приём реплики и её обработка разделены, чтобы долгий разбор одного звонка не задерживал остальные.</p></div>
-  </div>
-</section>
+    <!-- Features Section -->
+    <section class="features">
+      <div class="container">
+        <h2>РЕШАЙТЕ ЗАДАЧИ БЫСТРЕЕ<br />С МТС AI-AGENT</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                stroke-width="2"
+              >
+                <path
+                  d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"
+                ></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="22"></line>
+              </svg>
+            </div>
+            <h3>Распознавание любого голоса</h3>
+            <p>Каждое ваше слово сразу переводится в текст.</p>
+          </div>
 
-<footer>
-  <div class="wrap">
-    <span>ТехноСтрим — линия поддержки</span>
-    <span>встраиваемый сервис для бизнес-линий МТС</span>
-  </div>
-</footer>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                stroke-width="2"
+              >
+                <path
+                  d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"
+                ></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </div>
+            <h3>Систематизация полученных файлов</h3>
+            <p>Агент правильно обучен работать с информацией.</p>
+          </div>
 
-<button class="voice-bubble" id="voice-bubble" aria-label="Открыть голосовой звонок">
-  <span class="orb-mini"></span>
-  <span>Voice chat</span>
-</button>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                stroke-width="2"
+              >
+                <path
+                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                ></path>
+              </svg>
+            </div>
+            <h3>Простой переход в чат или на человека</h3>
+            <p>Агент имеет разные форматы разговоров.</p>
+          </div>
 
-<div class="voice-overlay" id="voice-overlay">
-  <div class="voice-panel">
-    <button class="voice-close" id="voice-close" aria-label="Закрыть">✕</button>
-    <div class="voice-brand">ТехноСтрим · линия поддержки</div>
-    <div class="orb-big" id="voice-orb"></div>
-    <div class="voice-status" id="voice-status">Нажмите на микрофон</div>
-    <div class="voice-sub" id="voice-sub">Говорите — оператор ответит голосом</div>
-    <div class="voice-transcript" id="voice-transcript"></div>
-    <div class="voice-controls">
-      <button class="voice-mic" id="voice-mic" aria-label="Говорить">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-      <button class="voice-end" id="voice-end" aria-label="Завершить звонок">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="voice-fallback" id="voice-fallback" style="display:none;">
-      <input id="voice-text-input" type="text" placeholder="Микрофон недоступен — напишите реплику…">
-      <button id="voice-text-send">→</button>
-    </div>
-  </div>
-</div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <h3>История звонков и документов</h3>
+            <p>Сохраняются все действия и записи.</p>
+          </div>
 
-<script>
-/* Клиентская копия базы знаний линии — та же логика поиска/перевода,
-   что использует оператор, подключена локально для демонстрации. */
-const KB = {
-  "company_profile.md": { title: "О компании", text: `Чем занимаемся: IT-аутсорсинг для малого и среднего бизнеса — настройка и обслуживание офисной сети, техподдержка сотрудников, подключение оборудования (принтеры, Wi-Fi, VPN, почта). Владелец — Иван Петров.
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                stroke-width="2"
+              >
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+              </svg>
+            </div>
+            <h3>Быстрый и точный ответ на вопрос</h3>
+            <p>Агент правильно обучен работать с информацией.</p>
+          </div>
 
-Часы работы: Пн–Пт 9:00–18:00 (МСК). Сб–Вс — только аварийные заявки по контракту «Бизнес» и выше.
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                stroke-width="2"
+              >
+                <path
+                  d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                ></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+            </div>
+            <h3>Фиксация договоренностей</h3>
+            <p>Автоматическая фиксация и сохранение договоров.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-Присутствие: офис в Москве, выезд инженера по Москве и области. По регионам — удалённо.
+    <!-- CTA Section -->
+    <section class="cta">
+      <div class="container">
+        <div class="cta-content">
+          <h2>Попробовать бесплатно</h2>
+          <button class="btn-cta" onclick="startChat()">Начать чат</button>
+        </div>
+      </div>
+    </section>
 
-Связь: Telegram @technostream_support · support@technostream.example · technostream.example
+    <!-- Footer -->
+    <footer>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-info">
+            <h3>МТС - связь и цифровые решения</h3>
+            <p>
+              Актуальные новости об услугах на базе мобильных и фиксированных
+              сетей, цифровых сервисах и приложениях, ТВ и медиа, финансовых
+              сервисах и в сфере больших данных, облачных решениях и других
+              сервисах компаний.
+            </p>
+          </div>
+          <div class="footer-social">
+            <h3>Социальные сети</h3>
+            <div class="social-icons">
+              <div class="social-icon" onclick="openSocial('instagram')">
+                <svg viewBox="0 0 24 24">
+                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                  <path
+                    d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"
+                  ></path>
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                </svg>
+              </div>
+              <div class="social-icon" onclick="openSocial('facebook')">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"
+                  ></path>
+                </svg>
+              </div>
+              <div class="social-icon" onclick="openSocial('vk')">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M16.5 10.5c.5-.5 1-1.5 1-1.5s.5-1-.5-1h-2.5c-.5 0-.7.3-.9.7 0 0-1 2.5-2.5 4-.5.5-.7.3-.7-.5v-3c0-.5-.2-.7-.7-.7h-1.5c-.4 0-.6.3-.6.6 0 .6 1 1 1 3 0 1.5-.2 2.5-1 2.5-.5 0-1.5-.5-2.5-2.5-1-2-1.5-3.5-1.5-3.5s-.2-.5-.7-.5H2.5c-.5 0-.6.3-.6.6 0 .6 1 3.5 2.5 5.5 1.5 2 3 2.5 4 2.5h1.5c.5 0 .7-.3.7-.7v-1.5c0-.5.2-.7.6-.7.4 0 .8.3 1.2 1 1 1.5 2 2.5 2 2.5s.3.3.7.3h2.5c.5 0 .8-.3.8-.7 0-.5-.3-.8-.8-1.3-.5-.5-1.2-1.2-1.5-1.7-.5-.7-.3-1 .2-1.5z"
+                  ></path>
+                </svg>
+              </div>
+              <div class="social-icon" onclick="openSocial('telegram')">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M21.2 4.4L2.4 11.7c-.7.3-.7.7 0 .9l4.8 1.5 1.8 5.8c.2.6.4.7.8.4l2.7-2.2 5.6 4.1c1 .6 1.7.3 2-1l3.6-17c.4-1.3-.5-2-1.5-1.6zM9.5 14.2l-.5 4.8-1.4-4.5 10.5-6.6c.5-.3 1-.1.6.2l-9.2 6.1z"
+                  ></path>
+                </svg>
+              </div>
+              <div class="social-icon" onclick="openSocial('tiktok')">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"
+                  ></path>
+                </svg>
+              </div>
+              <div class="social-icon" onclick="openSocial('youtube')">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"
+                  ></path>
+                  <polygon
+                    points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"
+                  ></polygon>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>
+            © 2012-2026 ООО «Мобильные ТелеСистемы». УНП 800013732<br />
+            Регистрационный номер поставщика платежных услуг:<br />
+            112/800013732.0-3-0-5.0011-6.0100-0-0-9<br />
+            Все права защищены.
+          </p>
+        </div>
+      </div>
+    </footer>
 
-Юрлицо: ООО «ТехноСтрим», ИНН 7701234567` },
-  "services_and_pricing.md": { title: "Услуги и цены", text: `Услуги: обслуживание офисной сети · техподдержка сотрудников · разовая настройка оборудования · консультации по IT-инфраструктуре.
+    <script>
+      function startChat() {
+        alert("Чат с МТС AI-Agent будет открыт. Это демонстрационная версия.");
+      }
 
-Тарифы (подписка в месяц):
-— Старт — 15 000 ₽: до 10 мест, реакция 1 рабочий день
-— Бизнес — 35 000 ₽: до 30 мест, реакция 4 часа, включая выходные для аварий
-— Корпоративный — индивидуально: выделенный инженер, SLA по договору
+      function openSocial(platform) {
+        const urls = {
+          instagram: "https://instagram.com",
+          facebook: "https://facebook.com",
+          vk: "https://vk.com",
+          telegram: "https://telegram.org",
+          tiktok: "https://tiktok.com",
+          youtube: "https://youtube.com",
+        };
+        window.open(urls[platform], "_blank");
+      }
 
-Первая консультация и аудит сети — бесплатно, до 1 часа.
+      // Add smooth scroll behavior
+      document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+        anchor.addEventListener("click", function (e) {
+          e.preventDefault();
+          const target = document.querySelector(this.getAttribute("href"));
+          if (target) {
+            target.scrollIntoView({
+              behavior: "smooth",
+            });
+          }
+        });
+      });
 
-Отмена — с уведомлением за 30 дней, возврат за оказанные месяцы не производится. Спорные случаи решает только отдел биллинга.` },
-  "support_faq.md": { title: "Типовые проблемы", text: `Не работает интернет: уточнить — у всех или у одного, горят ли индикаторы на роутере. Посоветовать перезагрузку роутера и проверку кабеля. Не помогло — перевод в техподдержку.
+      // Add animation on scroll
+      const observerOptions = {
+        threshold: 0.1,
+        rootMargin: "0px 0px -50px 0px",
+      };
 
-VPN не подключается: проверить логин/пароль (истекает раз в 90 дней), переподключиться к сети. Ошибка сертификата — сразу перевод.
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = "1";
+            entry.target.style.transform = "translateY(0)";
+          }
+        });
+      }, observerOptions);
 
-Принтер не печатает по сети: проверить, виден ли в списке, перезапустить очередь печати.
-
-Почта не приходит/не уходит: проверить интернет в целом и папку «Спам». Проблема только с почтой — перевод в техподдержку.
-
-Правило: не придумывать причину проблемы, если её нет в этом файле.` },
-  "escalation_rules.md": { title: "Когда переводить", text: `Прямая просьба абонента → отдел «менеджер», без попытки решить самому.
-
-Вопрос вне базы знаний → «продажи» (или «техподдержка», если явно технический).
-
-Нерешённая техническая проблема после двух попыток → «техподдержка».
-
-Расхождение по счёту, спорная сумма, вопрос про возврат → «биллинг».
-
-Новый клиент интересуется подключением → «продажи».
-
-Явная агрессия или угроза жалобой → «менеджер», высокий риск недовольства.` }
-};
-
-const DEPT_LABEL = { "менеджер": "менеджера", "биллинг": "биллинг", "продажи": "отдел продаж", "техподдержка": "техподдержку" };
-
-const tabsEl = document.getElementById('kb-tabs');
-const panelsEl = document.getElementById('kb-panels');
-Object.entries(KB).forEach(([file, doc], i) => {
-  const tab = document.createElement('button');
-  tab.className = 'kb-tab' + (i === 0 ? ' active' : '');
-  tab.textContent = doc.title;
-  tab.onclick = () => {
-    document.querySelectorAll('.kb-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.kb-panel').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('panel-' + file).classList.add('active');
-  };
-  tabsEl.appendChild(tab);
-  const panel = document.createElement('div');
-  panel.className = 'kb-panel' + (i === 0 ? ' active' : '');
-  panel.id = 'panel-' + file;
-  panel.innerHTML = `<h3>${doc.title}</h3><div class="kb-body">${doc.text}</div>`;
-  panelsEl.appendChild(panel);
-});
-
-function searchKnowledge(query) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  let best = null;
-  for (const [file, doc] of Object.entries(KB)) {
-    const haystack = doc.text.toLowerCase();
-    const score = words.reduce((s, w) => s + (haystack.includes(w) ? 1 : 0), 0);
-    if (score > 0 && (!best || score > best.score)) best = { file, score, doc };
-  }
-  return best;
-}
-const ESCALATION_RULES = [
-  { test: t => /человек|менеджер|специалист/.test(t), dept: "менеджер" },
-  { test: t => /жалоб|возмущ|грозит|хам/.test(t), dept: "менеджер" },
-  { test: t => /возврат|спис|не сход|ошибк.*счет|счёт/.test(t), dept: "биллинг" },
-  { test: t => /подключ.*(нов|хочу)|стать клиент/.test(t), dept: "продажи" },
-];
-function decide(userText) {
-  const lower = userText.toLowerCase();
-  const directEscalation = ESCALATION_RULES.find(r => r.test(lower));
-  const kbHit = searchKnowledge(userText);
-  return { directEscalation, kbHit };
-}
-
-/* ---- телефонная карточка: звонок → ожидание → перевод на линию → диалог ---- */
-const callArea = document.getElementById('call-area');
-const callRing = document.getElementById('call-ring');
-const phoneStatus = document.getElementById('phone-status');
-let callStarted = false;
-
-function buildCallUI() {
-  callArea.className = '';
-  callArea.innerHTML = `
-    <div class="msgs" id="msgs"></div>
-    <div class="suggestions">
-      <button class="suggestion" data-q="В офисе не работает интернет">Не работает интернет</button>
-      <button class="suggestion" data-q="Сколько стоит ваша подписка Бизнес?">Сколько стоит тариф?</button>
-      <button class="suggestion" data-q="Хочу вернуть деньги за прошлый месяц">Вопрос про возврат</button>
-      <button class="suggestion" data-q="Позовите человека, пожалуйста">Позвать человека</button>
-    </div>
-    <div class="inputrow">
-      <input id="chat-input" type="text" placeholder="Напишите, с чем звонит абонент…" autocomplete="off">
-      <button id="chat-send" aria-label="Отправить"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 5l7 7-7 7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    </div>`;
-  wireChat();
-}
-
-async function startCall() {
-  if (callStarted) return;
-  callStarted = true;
-  buildCallUI();
-  const msgsEl = document.getElementById('msgs');
-  phoneStatus.textContent = 'Соединение…';
-  addSystem(msgsEl, 'Набираем линию поддержки «ТехноСтрим»…');
-  await sleep(1200);
-  phoneStatus.textContent = 'На линии';
-  phoneStatus.classList.add('live');
-  addSystem(msgsEl, 'Вызов принят');
-  await sleep(400);
-  addMsg(msgsEl, 'agent', 'Здравствуйте! Это «ТехноСтрим», линия поддержки, меня зовут Алина — чем могу помочь?');
-}
-callRing.addEventListener('click', startCall);
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function addMsg(container, role, text) {
-  const m = document.createElement('div');
-  m.className = 'msg ' + role;
-  m.textContent = text;
-  container.appendChild(m);
-  container.scrollTop = container.scrollHeight;
-  return m;
-}
-function addSystem(container, text) {
-  const m = document.createElement('div');
-  m.className = 'msg system';
-  m.textContent = text;
-  container.appendChild(m);
-  container.scrollTop = container.scrollHeight;
-}
-function showTyping(container) {
-  const t = document.createElement('div');
-  t.className = 'typing';
-  t.id = 'typing-now';
-  t.innerHTML = '<span></span><span></span><span></span>';
-  container.appendChild(t);
-  container.scrollTop = container.scrollHeight;
-}
-function hideTyping() {
-  const t = document.getElementById('typing-now');
-  if (t) t.remove();
-}
-
-async function handleTurn(text) {
-  const msgsEl = document.getElementById('msgs');
-  addMsg(msgsEl, 'user', text);
-  showTyping(msgsEl);
-
-  const { directEscalation, kbHit } = decide(text);
-  await sleep(700);
-  hideTyping();
-
-  if (directEscalation) {
-    addMsg(msgsEl, 'agent', 'Секунду, переключаю вас — так вам точно помогут быстрее.');
-    addSystem(msgsEl, 'Переводим звонок…');
-    await sleep(1100);
-    addSystem(msgsEl, 'Соединено — ' + DEPT_LABEL[directEscalation.dept]);
-    await sleep(300);
-    addMsg(msgsEl, 'agent', 'Здравствуйте, слушаю — в чём вопрос?');
-    return;
-  }
-  if (kbHit) {
-    const firstLine = kbHit.doc.text.split('\n').filter(Boolean)[0];
-    addMsg(msgsEl, 'agent', firstLine);
-  } else {
-    addMsg(msgsEl, 'agent', 'Сейчас не готова сказать точно — секунду, переключу на специалиста.');
-    addSystem(msgsEl, 'Переводим звонок…');
-    await sleep(1100);
-    addSystem(msgsEl, 'Соединено — отдел продаж');
-    await sleep(300);
-    addMsg(msgsEl, 'agent', 'Добрый день, слушаю вас.');
-  }
-}
-
-function wireChat() {
-  const input = document.getElementById('chat-input');
-  const sendBtn = document.getElementById('chat-send');
-  function submit() {
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    handleTurn(text);
-  }
-  sendBtn.addEventListener('click', submit);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
-  document.querySelectorAll('.suggestion').forEach(btn => {
-    btn.addEventListener('click', () => { input.value = btn.dataset.q; submit(); });
-  });
-}
-
-/* ---- voice chat widget: тот же звонок, но голосом ---- */
-(function () {
-  const bubble = document.getElementById('voice-bubble');
-  const overlay = document.getElementById('voice-overlay');
-  const closeBtn = document.getElementById('voice-close');
-  const orb = document.getElementById('voice-orb');
-  const statusEl = document.getElementById('voice-status');
-  const subEl = document.getElementById('voice-sub');
-  const transcriptEl = document.getElementById('voice-transcript');
-  const micBtn = document.getElementById('voice-mic');
-  const endBtn = document.getElementById('voice-end');
-  const fallback = document.getElementById('voice-fallback');
-  const textInput = document.getElementById('voice-text-input');
-  const textSend = document.getElementById('voice-text-send');
-
-  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognizer = null;
-  let listening = false;
-  let greeted = false;
-
-  function setOrbState(state) { orb.className = 'orb-big' + (state ? ' ' + state : ''); }
-  function addVoiceLine(role, text) {
-    const line = document.createElement('div');
-    line.className = 'voice-line ' + role;
-    line.textContent = text;
-    transcriptEl.appendChild(line);
-    transcriptEl.scrollTop = transcriptEl.scrollHeight;
-  }
-  function speak(text) {
-    return new Promise(resolve => {
-      if (!('speechSynthesis' in window)) { resolve(); return; }
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'ru-RU';
-      const ruVoice = speechSynthesis.getVoices().find(v => v.lang && v.lang.startsWith('ru'));
-      if (ruVoice) utter.voice = ruVoice;
-      setOrbState('speaking');
-      statusEl.textContent = 'Оператор говорит…';
-      utter.onend = () => resolve();
-      utter.onerror = () => resolve();
-      speechSynthesis.speak(utter);
-    });
-  }
-
-  async function greet() {
-    if (greeted) return;
-    greeted = true;
-    setOrbState('thinking');
-    statusEl.textContent = 'Соединяем…';
-    subEl.textContent = 'набираем линию поддержки';
-    await sleep(1100);
-    statusEl.textContent = 'На линии';
-    subEl.textContent = '';
-    const greeting = 'Здравствуйте! Это «ТехноСтрим», линия поддержки, меня зовут Алина — чем могу помочь?';
-    addVoiceLine('agent', greeting);
-    await speak(greeting);
-    setOrbState(listening ? 'listening' : '');
-    statusEl.textContent = listening ? 'Слушаю…' : 'Нажмите на микрофон';
-  }
-
-  async function respondTo(userText) {
-    addVoiceLine('user', userText);
-    setOrbState('thinking');
-    statusEl.textContent = 'Секунду…';
-    subEl.textContent = '';
-    await sleep(650);
-
-    const { directEscalation, kbHit } = decide(userText);
-    let reply;
-    if (directEscalation) {
-      reply = 'Секунду, переключаю вас — так вам точно помогут быстрее.';
-      addVoiceLine('agent', reply);
-      await speak(reply);
-      statusEl.textContent = 'Переводим звонок…';
-      await sleep(1100);
-      addVoiceLine('agent', 'Соединено. Здравствуйте, слушаю — в чём вопрос?');
-      await speak('Соединено. Здравствуйте, слушаю — в чём вопрос?');
-    } else if (kbHit) {
-      reply = kbHit.doc.text.split('\n').filter(Boolean)[0];
-      addVoiceLine('agent', reply);
-      await speak(reply);
-    } else {
-      reply = 'Сейчас не готова сказать точно — секунду, переключу на специалиста.';
-      addVoiceLine('agent', reply);
-      await speak(reply);
-      statusEl.textContent = 'Переводим звонок…';
-      await sleep(1100);
-      addVoiceLine('agent', 'Соединено. Добрый день, слушаю вас.');
-      await speak('Соединено. Добрый день, слушаю вас.');
-    }
-
-    setOrbState(listening ? 'listening' : '');
-    statusEl.textContent = listening ? 'Слушаю…' : 'Нажмите на микрофон';
-    subEl.textContent = '';
-  }
-
-  function openPanel() {
-    overlay.classList.add('open');
-    greet();
-    if (!SpeechRecognitionImpl) {
-      fallback.style.display = 'flex';
-      micBtn.style.display = 'none';
-    }
-  }
-  function closePanel() {
-    overlay.classList.remove('open');
-    stopListening();
-    if ('speechSynthesis' in window) speechSynthesis.cancel();
-  }
-  function startListening() {
-    if (!SpeechRecognitionImpl || listening) return;
-    recognizer = new SpeechRecognitionImpl();
-    recognizer.lang = 'ru-RU';
-    recognizer.interimResults = false;
-    recognizer.maxAlternatives = 1;
-    recognizer.onstart = () => {
-      listening = true;
-      micBtn.classList.add('active');
-      setOrbState('listening');
-      statusEl.textContent = 'Слушаю…';
-    };
-    recognizer.onresult = (e) => respondTo(e.results[0][0].transcript);
-    recognizer.onerror = () => { subEl.textContent = 'не расслышала — нажмите на микрофон ещё раз'; };
-    recognizer.onend = () => {
-      listening = false;
-      micBtn.classList.remove('active');
-      setOrbState('');
-      if (statusEl.textContent === 'Слушаю…') statusEl.textContent = 'Нажмите на микрофон';
-    };
-    try { recognizer.start(); } catch (err) {}
-  }
-  function stopListening() {
-    if (recognizer) { try { recognizer.stop(); } catch (err) {} }
-    listening = false;
-    micBtn.classList.remove('active');
-  }
-
-  bubble.addEventListener('click', openPanel);
-  closeBtn.addEventListener('click', closePanel);
-  endBtn.addEventListener('click', closePanel);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePanel(); });
-  micBtn.addEventListener('click', () => { listening ? stopListening() : startListening(); });
-  textSend.addEventListener('click', () => {
-    const v = textInput.value.trim();
-    if (!v) return;
-    textInput.value = '';
-    respondTo(v);
-  });
-  textInput.addEventListener('keydown', e => { if (e.key === 'Enter') textSend.click(); });
-})();
-</script>
-</body>
+      document.querySelectorAll(".feature-card").forEach((card) => {
+        card.style.opacity = "0";
+        card.style.transform = "translateY(20px)";
+        card.style.transition = "all 0.6s ease";
+        observer.observe(card);
+      });
+    </script>
+  </body>
 </html>
