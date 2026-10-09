@@ -8,16 +8,20 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-3-5-sonnet-20241022}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
-      - AGENT_API_KEY=${AGENT_API_KEY}
+      - POLZA_API_KEY=${POLZA_API_KEY:-}
+      - POLZA_BASE_URL=${POLZA_BASE_URL:-https://polza.ai/api/v1}
+      - POLZA_MODEL=${POLZA_MODEL:-anthropic/claude-sonnet-4}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - AGENT_API_KEY=${AGENT_API_KEY:-test-local-key}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
-      - CACHE_BACKEND=redis
-      - STORAGE_BACKEND=supabase
+      - CACHE_BACKEND=${CACHE_BACKEND:-sqlite}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite}
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis
