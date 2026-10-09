@@ -82,6 +82,28 @@ class StorageService:
             logger.error(f"Error retrieving call: {str(e)}")
             return None
     
+    async def get_client_by_api_key_hash(self, api_key_hash: str) -> Optional[dict]:
+        """
+        Структура под мультиарендность (docs/SCALING_PLAN.md §3, api_clients).
+        Не вызывается из src/api/auth.py сейчас — единый AGENT_API_KEY
+        продолжает работать как основная проверка. Это следующий шаг:
+        когда появится больше одного бизнеса, auth.py переключится на
+        поиск здесь вместо settings.agent_api_key.
+        """
+        try:
+            response = (
+                self.client.table("api_clients")
+                .select("*")
+                .eq("api_key_hash", api_key_hash)
+                .eq("is_active", True)
+                .execute()
+            )
+            return response.data[0] if response.data else None
+
+        except Exception as e:
+            logger.error(f"Error retrieving api_client: {str(e)}")
+            return None
+
     async def get_caller_history(self, caller_phone: str, limit: int = 10) -> List[dict]:
         """Get call history for a caller"""
         try:

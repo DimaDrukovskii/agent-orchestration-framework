@@ -55,6 +55,26 @@ CREATE TABLE public.agent_metrics (
 );
 
 CREATE INDEX metrics_date_idx ON public.agent_metrics(date);
+
+-- Table: api_clients — мультиарендность (docs/SCALING_PLAN.md §3).
+-- Структура под "ключ на бизнес" вместо одного общего AGENT_API_KEY.
+-- Не подключена в src/api/auth.py как основная проверка — тот общий
+-- ключ продолжает работать как есть, эта таблица готова под следующий шаг.
+CREATE TABLE public.api_clients (
+    id BIGSERIAL PRIMARY KEY,
+    api_key_hash TEXT UNIQUE NOT NULL,
+    business_name TEXT NOT NULL,
+    webhook_url TEXT,
+    rate_limit_per_minute INT DEFAULT 100,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX api_clients_api_key_hash_idx ON public.api_clients(api_key_hash);
+
+-- calls.client_id — на какой бизнес звонок, когда появится несколько клиентов.
+-- Nullable: старые/однотенантные звонки (текущий MVP) её не заполняют.
+ALTER TABLE public.calls ADD COLUMN client_id BIGINT REFERENCES api_clients(id);
 ```
 
 ## Структура

@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # Пусто = функция выключена, агент работает и без неё.
     telegram_bot_token: str = ""
 
+    # Голос (TTS) — структура под "проводочки", см. src/services/tts.py.
+    # tts_provider="none" = агент работает текстом, как сейчас, озвучка выключена.
+    # Яндекс SpeechKit пока не реализован (нет токена) — см. ссылку на API
+    # в src/services/tts.py, подключать только когда появится ключ.
+    tts_provider: str = "none"  # "none" | "elevenlabs" | "yandex"
+    tts_api_key: str = ""
+    tts_voice_id: str = ""
+
     # Server
     max_call_duration_seconds: int = 600
     agent_timeout_seconds: int = 30
