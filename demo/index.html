@@ -953,7 +953,7 @@
         } catch (e) {}
       }
 
-      keyInput.value = storeGet("mts_api_key");
+      keyInput.value = storeGet("mts_api_key") || "test-local-key";
       keyDetails.open = !keyInput.value;
       keyInput.addEventListener("change", () => storeSet("mts_api_key", keyInput.value.trim()));
 
