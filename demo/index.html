@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes — ИИ-агент для входящих звонков</title>
+<style>
+  :root{
+    --color-bg: oklch(16% 0.015 260);
+    --color-surface: oklch(20% 0.02 260);
+    --color-surface-raised: oklch(24% 0.02 260);
+    --color-border: oklch(32% 0.02 260);
+    --color-text: oklch(96% 0.01 260);
+    --color-text-dim: oklch(70% 0.02 260);
+    --color-accent: #E30611;
+    --color-accent-dim: oklch(32% 0.14 25);
+    --color-ok: oklch(72% 0.17 155);
+
+    --text-base: clamp(1rem, 0.94rem + 0.3vw, 1.125rem);
+    --text-h1: clamp(2.4rem, 1.4rem + 4.5vw, 5.2rem);
+    --text-h2: clamp(1.7rem, 1.2rem + 2vw, 2.6rem);
+    --text-h3: clamp(1.1rem, 1rem + 0.5vw, 1.35rem);
+
+    --space-section: clamp(4rem, 3rem + 4vw, 8rem);
+    --radius: 18px;
+
+    --duration-fast: 150ms;
+    --duration-normal: 300ms;
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --font-display: 'Söhne', 'Golos Text', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--color-bg);
+    color:var(--color-text);
+    font-family:var(--font-display);
+    font-size:var(--text-base);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;}
+  h1,h2,h3{font-weight:700; letter-spacing:-0.02em; margin:0;}
+  .mono{font-family:var(--font-mono); letter-spacing:0;}
+  .wrap{max-width:1140px; margin:0 auto; padding:0 24px;}
+
+  /* ---- nav ---- */
+  header.nav{
+    position:sticky; top:0; z-index:50;
+    background:oklch(16% 0.015 260 / 0.82);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--color-border);
+  }
+  nav.wrap{
+    display:flex; align-items:center; justify-content:space-between;
+    height:64px;
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:1.05rem;}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--color-accent); box-shadow:0 0 0 4px var(--color-accent-dim);}
+  nav.wrap ul{display:flex; gap:28px; list-style:none; margin:0; padding:0;}
+  nav.wrap a{text-decoration:none; font-size:0.9rem; color:var(--color-text-dim); transition:color var(--duration-fast);}
+  nav.wrap a:hover{color:var(--color-text);}
+  .nav-cta{
+    background:var(--color-accent); color:#fff; border:none; border-radius:999px;
+    padding:9px 18px; font-size:0.85rem; font-weight:600; cursor:pointer;
+    transition:transform var(--duration-fast) var(--ease-out-expo);
+  }
+  .nav-cta:hover{transform:translateY(-1px);}
+  @media (max-width:760px){ nav.wrap ul{display:none;} }
+
+  /* ---- hero ---- */
+  section.hero{
+    padding: calc(var(--space-section) * 0.9) 0 var(--space-section);
+    position:relative; overflow:hidden;
+  }
+  section.hero::before{
+    content:""; position:absolute; inset:-20% -10% auto -10%; height:600px;
+    background: radial-gradient(60% 50% at 30% 20%, var(--color-accent-dim), transparent 70%);
+    pointer-events:none;
+  }
+  .hero-grid{display:grid; grid-template-columns:1.3fr 1fr; gap:48px; position:relative;}
+  @media (max-width:900px){ .hero-grid{grid-template-columns:1fr;} }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:var(--font-mono); font-size:0.78rem; color:var(--color-accent);
+    border:1px solid var(--color-accent-dim); border-radius:999px; padding:6px 12px;
+    margin-bottom:22px; text-transform:uppercase; letter-spacing:0.06em;
+  }
+  h1.headline{font-size:var(--text-h1); line-height:1.02;}
+  h1.headline em{color:var(--color-accent); font-style:normal;}
+  .hero-sub{color:var(--color-text-dim); max-width:46ch; margin-top:22px; font-size:1.08rem;}
+  .hero-ctas{display:flex; gap:14px; margin-top:34px; flex-wrap:wrap;}
+  .btn-primary, .btn-secondary{
+    border-radius:999px; padding:13px 26px; font-size:0.95rem; font-weight:600;
+    cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:8px;
+    transition:transform var(--duration-fast) var(--ease-out-expo), background var(--duration-fast);
+  }
+  .btn-primary{background:var(--color-accent); color:#fff;}
+  .btn-primary:hover{transform:translateY(-2px);}
+  .btn-secondary{background:transparent; color:var(--color-text); border:1px solid var(--color-border);}
+  .btn-secondary:hover{border-color:var(--color-text-dim);}
+
+  .persona-card{
+    background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius);
+    padding:26px; align-self:start;
+  }
+  .persona-card .name{font-weight:700; font-size:1.1rem;}
+  .persona-card .role{color:var(--color-text-dim); font-size:0.88rem; margin-top:2px;}
+  .persona-quote{margin-top:16px; font-size:0.95rem; color:var(--color-text-dim); font-style:italic; border-left:2px solid var(--color-accent); padding-left:14px;}
+
+  /* ---- section shared ---- */
+  section{padding:var(--space-section) 0;}
+  .section-label{font-family:var(--font-mono); font-size:0.78rem; color:var(--color-accent); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; display:block;}
+  .section-title{font-size:var(--text-h2); max-width:22ch;}
+  .section-sub{color:var(--color-text-dim); max-width:56ch; margin-top:14px;}
+
+  /* ---- steps ---- */
+  .steps{display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-top:48px;}
+  @media (max-width:900px){ .steps{grid-template-columns:1fr 1fr;} }
+  @media (max-width:560px){ .steps{grid-template-columns:1fr;} }
+  .step{
+    background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius);
+    padding:22px; position:relative;
+  }
+  .step .num{font-family:var(--font-mono); color:var(--color-accent); font-size:0.85rem;}
+  .step h3{margin-top:14px; font-size:1.05rem;}
+  .step p{color:var(--color-text-dim); font-size:0.88rem; margin-top:8px;}
+
+  /* ---- demo ---- */
+  section.demo{background:var(--color-surface); border-top:1px solid var(--color-border); border-bottom:1px solid var(--color-border);}
+  .demo-grid{display:grid; grid-template-columns:1fr 420px; gap:48px; margin-top:44px; align-items:start;}
+  @media (max-width:980px){ .demo-grid{grid-template-columns:1fr;} }
+
+  .trace{display:flex; flex-direction:column; gap:10px;}
+  .trace-item{
+    display:flex; gap:10px; align-items:flex-start; padding:12px 14px;
+    background:var(--color-surface-raised); border:1px solid var(--color-border); border-radius:12px;
+    font-size:0.85rem; opacity:0; transform:translateY(6px);
+    animation: fadeUp var(--duration-normal) var(--ease-out-expo) forwards;
+  }
+  @keyframes fadeUp{ to{opacity:1; transform:translateY(0);} }
+  .trace-item .ic{font-family:var(--font-mono); color:var(--color-accent); flex-shrink:0;}
+  .trace-item .body{color:var(--color-text-dim);}
+  .trace-item .body b{color:var(--color-text); font-weight:600;}
+  .trace-item.transfer{border-color:var(--color-accent-dim); background:oklch(24% 0.05 25);}
+  .trace-item.transfer .ic{color:var(--color-accent);}
+
+  .phone{
+    background:var(--color-bg); border:1px solid var(--color-border); border-radius:28px;
+    padding:18px; height:560px; display:flex; flex-direction:column;
+    box-shadow:0 30px 60px -20px rgba(0,0,0,0.5);
+  }
+  .phone-head{display:flex; align-items:center; gap:10px; padding:4px 6px 14px; border-bottom:1px solid var(--color-border);}
+  .phone-head .avatar{width:34px;height:34px;border-radius:50%;background:var(--color-accent-dim); display:flex;align-items:center;justify-content:center; color:var(--color-accent); font-weight:700; font-size:0.85rem;}
+  .phone-head .who b{display:block; font-size:0.9rem;}
+  .phone-head .who span{display:block; font-size:0.75rem; color:var(--color-ok);}
+  .msgs{flex:1; overflow-y:auto; padding:14px 4px; display:flex; flex-direction:column; gap:10px;}
+  .msg{max-width:84%; padding:10px 14px; border-radius:14px; font-size:0.9rem; line-height:1.45; opacity:0; animation: fadeUp var(--duration-normal) var(--ease-out-expo) forwards;}
+  .msg.agent{align-self:flex-start; background:var(--color-surface-raised); border-radius:14px 14px 14px 3px;}
+  .msg.user{align-self:flex-end; background:var(--color-accent); color:#fff; border-radius:14px 14px 3px 14px;}
+  .msg.system{align-self:center; background:transparent; color:var(--color-text-dim); font-size:0.72rem; font-family:var(--font-mono); padding:4px 10px; border:1px solid var(--color-border); border-radius:999px;}
+  .typing{align-self:flex-start; display:flex; gap:4px; padding:12px 14px;}
+  .typing span{width:6px;height:6px;border-radius:50%;background:var(--color-text-dim); animation: blink 1.1s infinite ease-in-out;}
+  .typing span:nth-child(2){animation-delay:0.15s;}
+  .typing span:nth-child(3){animation-delay:0.3s;}
+  @keyframes blink{ 0%,80%,100%{opacity:0.25;} 40%{opacity:1;} }
+  .inputrow{display:flex; gap:8px; padding-top:12px; border-top:1px solid var(--color-border);}
+  .inputrow input{
+    flex:1; background:var(--color-surface); border:1px solid var(--color-border); border-radius:999px;
+    padding:11px 16px; color:var(--color-text); font-family:inherit; font-size:0.9rem; outline:none;
+  }
+  .inputrow input:focus{border-color:var(--color-accent);}
+  .inputrow button{
+    width:42px;height:42px;border-radius:999px; background:var(--color-accent); border:none; color:#fff;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .suggestions{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px;}
+  .suggestion{
+    font-size:0.78rem; color:var(--color-text-dim); border:1px solid var(--color-border);
+    border-radius:999px; padding:7px 13px; cursor:pointer; background:none; font-family:inherit;
+    transition:border-color var(--duration-fast), color var(--duration-fast);
+  }
+  .suggestion:hover{border-color:var(--color-accent); color:var(--color-text);}
+
+  /* ---- architecture ---- */
+  .arch-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:44px;}
+  @media (max-width:900px){ .arch-grid{grid-template-columns:1fr 1fr;} }
+  @media (max-width:560px){ .arch-grid{grid-template-columns:1fr;} }
+  .arch-card{background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius); padding:22px;}
+  .arch-card .tag{font-family:var(--font-mono); font-size:0.72rem; color:var(--color-accent); text-transform:uppercase; letter-spacing:0.06em;}
+  .arch-card h3{margin-top:10px; font-size:1.02rem;}
+  .arch-card p{color:var(--color-text-dim); font-size:0.86rem; margin-top:8px;}
+  .arch-card.wide{grid-column:span 3;}
+  @media (max-width:900px){ .arch-card.wide{grid-column:span 2;} }
+  @media (max-width:560px){ .arch-card.wide{grid-column:span 1;} }
+  .flow{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:18px; font-family:var(--font-mono); font-size:0.78rem;}
+  .flow .node{background:var(--color-surface-raised); border:1px solid var(--color-border); border-radius:8px; padding:7px 12px;}
+  .flow .arrow{color:var(--color-text-dim);}
+
+  /* ---- knowledge base ---- */
+  .kb-tabs{display:flex; gap:10px; margin-top:40px; flex-wrap:wrap; border-bottom:1px solid var(--color-border); padding-bottom:0;}
+  .kb-tab{
+    background:none; border:none; color:var(--color-text-dim); font-family:inherit; font-size:0.88rem;
+    padding:12px 4px; cursor:pointer; position:relative; border-bottom:2px solid transparent; margin-right:14px;
+  }
+  .kb-tab.active{color:var(--color-text); border-color:var(--color-accent);}
+  .kb-panel{display:none; margin-top:26px; background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius); padding:28px;}
+  .kb-panel.active{display:block;}
+  .kb-panel h3{font-size:1.1rem; margin-bottom:14px;}
+  .kb-panel .kb-body{color:var(--color-text-dim); font-size:0.9rem; white-space:pre-wrap;}
+  .kb-panel .kb-body b, .kb-panel .kb-body strong{color:var(--color-text);}
+
+  footer{border-top:1px solid var(--color-border); padding:40px 0; color:var(--color-text-dim); font-size:0.85rem;}
+  footer .wrap{display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
+
+  ::selection{background:var(--color-accent-dim);}
+
+  /* ---- voice chat bubble (ElevenLabs-style floating widget) ---- */
+  .voice-bubble{
+    position:fixed; right:24px; bottom:24px; z-index:999;
+    display:flex; align-items:center; gap:10px;
+    background:var(--color-surface-raised); border:1px solid var(--color-border);
+    border-radius:999px; padding:8px 18px 8px 8px; cursor:pointer;
+    box-shadow:0 12px 32px rgba(0,0,0,0.45);
+    transition:transform var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast);
+  }
+  .voice-bubble:hover{transform:translateY(-2px); border-color:var(--color-accent-dim);}
+  .voice-bubble .orb-mini{width:34px; height:34px; border-radius:50%; flex-shrink:0;
+    background:conic-gradient(from 0deg, var(--color-accent), #ff7a5c, #ffb199, var(--color-accent));
+    animation: spin 5s linear infinite; position:relative;
+  }
+  .voice-bubble .orb-mini::after{content:""; position:absolute; inset:3px; border-radius:50%; background:var(--color-surface-raised);}
+  .voice-bubble span{font-size:0.85rem; font-weight:600; color:var(--color-text);}
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .voice-overlay{
+    position:fixed; inset:0; z-index:1000; background:rgba(8,8,10,0.72); backdrop-filter:blur(6px);
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .voice-overlay.open{display:flex;}
+  .voice-panel{
+    width:100%; max-width:420px; background:var(--color-surface); border:1px solid var(--color-border);
+    border-radius:28px; padding:36px 28px 28px; text-align:center; position:relative;
+    box-shadow:0 40px 100px -20px rgba(0,0,0,0.6);
+  }
+  .voice-close{
+    position:absolute; top:16px; right:16px; width:32px; height:32px; border-radius:50%;
+    background:var(--color-surface-raised); border:1px solid var(--color-border); color:var(--color-text-dim);
+    cursor:pointer; font-size:16px; line-height:1;
+  }
+  .voice-close:hover{color:var(--color-text);}
+  .voice-brand{font-size:0.8rem; color:var(--color-text-dim); margin-bottom:22px;}
+
+  .orb-big{
+    width:140px; height:140px; border-radius:50%; margin:0 auto 22px;
+    background:conic-gradient(from 90deg, var(--color-accent), #ff8f73, #ffd1c2, var(--color-accent));
+    animation: spin 7s linear infinite;
+    box-shadow:0 0 0 0 var(--color-accent-dim);
+    transition:box-shadow var(--duration-normal) var(--ease-out-expo);
+  }
+  .orb-big.listening{ animation-duration:3s; box-shadow:0 0 0 14px var(--color-accent-dim); }
+  .orb-big.thinking{ animation-duration:1.4s; }
+  .orb-big.speaking{ animation-duration:2s; box-shadow:0 0 0 10px var(--color-accent-dim); }
+
+  .voice-status{font-size:1.05rem; font-weight:600; min-height:1.4em;}
+  .voice-sub{font-size:0.85rem; color:var(--color-text-dim); margin-top:6px; min-height:1.4em;}
+
+  .voice-transcript{
+    margin-top:22px; max-height:160px; overflow-y:auto; text-align:left;
+    display:flex; flex-direction:column; gap:8px; padding-right:4px;
+  }
+  .voice-line{font-size:0.85rem; padding:9px 12px; border-radius:10px; background:var(--color-surface-raised); border:1px solid var(--color-border);}
+  .voice-line.user{align-self:flex-end; background:var(--color-accent-dim); border-color:transparent; max-width:85%;}
+  .voice-line.agent{align-self:flex-start; max-width:85%;}
+
+  .voice-controls{display:flex; justify-content:center; gap:14px; margin-top:24px;}
+  .voice-mic, .voice-end{
+    width:54px; height:54px; border-radius:50%; border:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform var(--duration-fast) var(--ease-out-expo), background var(--duration-fast);
+  }
+  .voice-mic{background:var(--color-accent); color:#fff;}
+  .voice-mic.active{background:#fff; color:var(--color-accent);}
+  .voice-mic:hover, .voice-end:hover{transform:translateY(-2px);}
+  .voice-end{background:var(--color-surface-raised); border:1px solid var(--color-border); color:var(--color-text-dim);}
+
+  .voice-fallback{margin-top:18px; display:flex; gap:8px;}
+  .voice-fallback input{
+    flex:1; background:var(--color-surface-raised); border:1px solid var(--color-border); border-radius:999px;
+    padding:10px 16px; color:var(--color-text); font-family:inherit; font-size:0.85rem; outline:none;
+  }
+  .voice-fallback button{
+    background:var(--color-accent); border:none; border-radius:999px; color:#fff; padding:0 18px; cursor:pointer; font-size:0.85rem; font-weight:600;
+  }
+  .voice-note{font-size:0.72rem; color:var(--color-text-dim); margin-top:14px; font-family:var(--font-mono);}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <nav class="wrap">
+    <div class="brand"><span class="dot"></span> Hermes <span style="color:var(--color-text-dim); font-weight:400;">для «ТехноСтрим»</span></div>
+    <ul>
+      <li><a href="#how">Как работает</a></li>
+      <li><a href="#demo">Демо-звонок</a></li>
+      <li><a href="#architecture">Архитектура</a></li>
+      <li><a href="#knowledge">База знаний</a></li>
+    </ul>
+    <button class="nav-cta" onclick="document.getElementById('demo').scrollIntoView({behavior:'smooth'})">Попробовать</button>
+  </nav>
+</header>
+
+<section class="hero wrap">
+  <div class="hero-grid">
+    <div>
+      <span class="eyebrow">Трек 1 · МТС · прототип</span>
+      <h1 class="headline">Звонок никто<br>не пропустит — <em>даже если</em><br>никто не берёт трубку.</h1>
+      <p class="hero-sub">Hermes отвечает на входящие вместо владельца бизнеса: ищет ответ в базе знаний, проверяет счёт абонента и сам решает, когда нужен живой человек.</p>
+      <div class="hero-ctas">
+        <a class="btn-primary" href="#demo">Позвонить в демо-режиме →</a>
+        <a class="btn-secondary" href="#architecture">Архитектура под МТС</a>
+      </div>
+    </div>
+    <div class="persona-card">
+      <div class="name">Иван Петров, 42</div>
+      <div class="role">Владелец ООО «ТехноСтрим» — IT-аутсорсинг</div>
+      <p class="persona-quote">«Весь день в разъездах и совещаниях. Боюсь пропустить важного клиента — но и сидеть на телефоне не могу.»</p>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="wrap">
+  <span class="section-label">Как это работает</span>
+  <h2 class="section-title">От входящего звонка до решённого вопроса — без участия владельца</h2>
+  <p class="section-sub">Hermes — не скрипт с кнопками, а агент с tool-use: сам решает, что сделать на каждом шаге диалога.</p>
+  <div class="steps">
+    <div class="step">
+      <span class="num">01</span>
+      <h3>Звонок приходит</h3>
+      <p>Телефония МТС (или Twilio-адаптер на хакатоне) пересылает реплику абонента на <span class="mono">/api/hermes/dialog</span>.</p>
+    </div>
+    <div class="step">
+      <span class="num">02</span>
+      <h3>Hermes ищет факты</h3>
+      <p>Вызывает <span class="mono">search_knowledge_base</span> — не придумывает цены и инструкции, берёт их из базы бизнеса.</p>
+    </div>
+    <div class="step">
+      <span class="num">03</span>
+      <h3>Проверяет, если нужно</h3>
+      <p>Для вопросов по счёту — <span class="mono">check_account_status</span>, прежде чем отвечать абоненту.</p>
+    </div>
+    <div class="step">
+      <span class="num">04</span>
+      <h3>Решает сам или переводит</h3>
+      <p>Отвечает сразу, либо вызывает <span class="mono">transfer_to_department</span> — честно, без притворства.</p>
+    </div>
+  </div>
+</section>
+
+<section id="demo" class="demo">
+  <div class="wrap">
+    <span class="section-label">Живое демо</span>
+    <h2 class="section-title">Позвоните «ТехноСтрим» прямо здесь</h2>
+    <p class="section-sub">Это локальная имитация агента — те же база знаний и правила перевода, что в <span class="mono">src/agent/tools.py</span> и <span class="mono">data/knowledge/</span>, без вызова реального Claude API.</p>
+
+    <div class="demo-grid">
+      <div class="trace" id="trace">
+        <div class="trace-item" style="animation-delay:0s"><span class="ic">●</span><span class="body">Ждём реплику абонента. Трасса рассуждений Hermes появится здесь — что он ищет и почему.</span></div>
+      </div>
+
+      <div class="phone">
+        <div class="phone-head">
+          <div class="avatar">ТС</div>
+          <div class="who"><b>ООО «ТехноСтрим»</b><span>● на линии — Hermes отвечает</span></div>
+        </div>
+        <div class="msgs" id="msgs"></div>
+        <div class="suggestions">
+          <button class="suggestion" data-q="В офисе не работает интернет">Не работает интернет</button>
+          <button class="suggestion" data-q="Сколько стоит ваша подписка Бизнес?">Сколько стоит тариф?</button>
+          <button class="suggestion" data-q="Хочу вернуть деньги за прошлый месяц">Вопрос про возврат</button>
+          <button class="suggestion" data-q="Позовите человека, пожалуйста">Позвать человека</button>
+        </div>
+        <div class="inputrow">
+          <input id="chat-input" type="text" placeholder="Напишите, с чем звонит абонент…" autocomplete="off">
+          <button id="chat-send" aria-label="Отправить"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 5l7 7-7 7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture" class="wrap">
+  <span class="section-label">Архитектура</span>
+  <h2 class="section-title">Один агент, подключаемый проводками</h2>
+  <p class="section-sub">Hermes спроектирован как «компьютер», к которому подводятся ключи и адреса через переменные среды — замена локального ключа на облачный Claude ничего в коде не трогает.</p>
+
+  <div class="flow">
+    <span class="node">МТС / Twilio-вебхук</span><span class="arrow">→</span>
+    <span class="node">X-API-Key</span><span class="arrow">→</span>
+    <span class="node">/api/hermes/dialog</span><span class="arrow">→</span>
+    <span class="node">Redis — сессия</span><span class="arrow">→</span>
+    <span class="node">Claude tool-use loop</span><span class="arrow">→</span>
+    <span class="node">Supabase — персист</span>
+  </div>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <span class="tag">Stateless</span>
+      <h3>Любой инстанс отвечает на любой запрос</h3>
+      <p>История диалога живёт в Redis по <span class="mono">session_id</span>, не в памяти процесса — можно поднять N реплик за балансировщиком.</p>
+    </div>
+    <div class="arch-card">
+      <span class="tag">Auth</span>
+      <h3>X-API-Key на входе</h3>
+      <p>Единый ключ на хакатон, по плану — таблица <span class="mono">api_clients</span> с ключом на бизнес и рейт-лимитом.</p>
+    </div>
+    <div class="arch-card">
+      <span class="tag">Персист</span>
+      <h3>Supabase, upsert по call_id</h3>
+      <p>Один <span class="mono">call_id</span> = один звонок = одна строка, обновляется на каждой реплике, не плодит дубликаты.</p>
+    </div>
+    <div class="arch-card wide">
+      <span class="tag">Под нагрузку МТС</span>
+      <h3>Асинхронный путь обработки — скелет</h3>
+      <p><span class="mono">POST /api/hermes/dialog/async</span> сразу отвечает 202 и <span class="mono">task_id</span>, фоновый воркер обрабатывает реплику очередью — так синхронный tool-use цикл агента не держит HTTP-соединение на сотнях параллельных звонков. Интерфейс очереди спроектирован так, чтобы in-memory реализацию можно было заменить на Redis Streams/SQS без изменения вызывающего кода.</p>
+    </div>
+  </div>
+</section>
+
+<section id="knowledge" class="wrap">
+  <span class="section-label">База знаний</span>
+  <h2 class="section-title">Что реально знает Hermes про «ТехноСтрим»</h2>
+  <p class="section-sub">Ровно те 4 файла из <span class="mono">data/knowledge/</span>, которые агент ищет по ключевым словам перед ответом. Один файл — одна тема, без примеси.</p>
+
+  <div class="kb-tabs" id="kb-tabs"></div>
+  <div id="kb-panels"></div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Hermes · MTS Call Agent — демо-прототип, Трек 1</span>
+    <span class="mono">локальная симуляция · без реального API-вызова</span>
+  </div>
+</footer>
+
+<!-- Плавающий voice-widget, как у ElevenLabs — орб-кнопка снизу справа -->
+<button class="voice-bubble" id="voice-bubble" aria-label="Открыть голосовой звонок с Hermes">
+  <span class="orb-mini"></span>
+  <span>Voice chat</span>
+</button>
+
+<div class="voice-overlay" id="voice-overlay">
+  <div class="voice-panel">
+    <button class="voice-close" id="voice-close" aria-label="Закрыть">✕</button>
+    <div class="voice-brand">Hermes · «ТехноСтрим»</div>
+    <div class="orb-big" id="voice-orb"></div>
+    <div class="voice-status" id="voice-status">Нажмите на микрофон</div>
+    <div class="voice-sub" id="voice-sub">Говорите — Hermes ответит голосом</div>
+    <div class="voice-transcript" id="voice-transcript"></div>
+    <div class="voice-controls">
+      <button class="voice-mic" id="voice-mic" aria-label="Говорить">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <button class="voice-end" id="voice-end" aria-label="Завершить звонок">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="voice-fallback" id="voice-fallback" style="display:none;">
+      <input id="voice-text-input" type="text" placeholder="Микрофон недоступен — напишите реплику…">
+      <button id="voice-text-send">→</button>
+    </div>
+    <div class="voice-note" id="voice-note">Web Speech API · локально, без Claude API</div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------
+   Клиентская копия базы знаний (data/knowledge/*.md) и упрощённая логика
+   search_knowledge_base / escalation_rules (src/agent/tools.py) — чтобы
+   демо открывалось локально как статический файл, без Claude API.
+--------------------------------------------------------------------- */
+const KB = {
+  "company_profile.md": {
+    title: "О компании",
+    text: `Чем занимаемся: IT-аутсорсинг для малого и среднего бизнеса — настройка и обслуживание офисной сети, техподдержка сотрудников, подключение оборудования (принтеры, Wi-Fi, VPN, почта). Владелец — Иван Петров.
+
+Часы работы: Пн–Пт 9:00–18:00 (МСК). Сб–Вс — только аварийные заявки по контракту «Бизнес» и выше.
+
+Присутствие: офис в Москве, выезд инженера по Москве и области. По регионам — удалённо.
+
+Связь: Telegram @technostream_support · support@technostream.example · technostream.example
+
+Юрлицо: ООО «ТехноСтрим», ИНН 7701234567`
+  },
+  "services_and_pricing.md": {
+    title: "Услуги и цены",
+    text: `Услуги: обслуживание офисной сети · техподдержка сотрудников · разовая настройка оборудования · консультации по IT-инфраструктуре.
+
+Тарифы (подписка в месяц):
+— Старт — 15 000 ₽: до 10 мест, реакция 1 рабочий день
+— Бизнес — 35 000 ₽: до 30 мест, реакция 4 часа, включая выходные для аварий
+— Корпоративный — индивидуально: выделенный инженер, SLA по договору
+
+Первая консультация и аудит сети — бесплатно, до 1 часа.
+
+Отмена — с уведомлением за 30 дней, возврат за оказанные месяцы не производится. Спорные случаи решает только отдел биллинга.`
+  },
+  "support_faq.md": {
+    title: "Техподдержка — типовые проблемы",
+    text: `Не работает интернет: уточнить — у всех или у одного, горят ли индикаторы на роутере. Посоветовать перезагрузку роутера и проверку кабеля. Не помогло — перевод в техподдержку.
+
+VPN не подключается: проверить логин/пароль (истекает раз в 90 дней), переподключиться к сети. Ошибка сертификата — сразу перевод.
+
+Принтер не печатает по сети: проверить, виден ли в списке, перезапустить очередь печати.
+
+Почта не приходит/не уходит: проверить интернет в целом и папку «Спам». Проблема только с почтой — перевод в техподдержку.
+
+Правило: не придумывать причину проблемы, если её нет в этом файле.`
+  },
+  "escalation_rules.md": {
+    title: "Когда переводить на человека",
+    text: `Прямая просьба абонента → отдел «менеджер», без попытки решить самому.
+
+Вопрос вне базы знаний → «продажи» (или «техподдержка», если явно технический).
+
+Нерешённая техническая проблема после двух попыток → «техподдержка».
+
+Расхождение по счёту, спорная сумма, вопрос про возврат → «биллинг».
+
+Новый клиент интересуется подключением → «продажи».
+
+Явная агрессия или угроза жалобой → «менеджер», высокий риск недовольства.`
+  }
+};
+
+/* ---- рендер вкладок базы знаний ---- */
+const tabsEl = document.getElementById('kb-tabs');
+const panelsEl = document.getElementById('kb-panels');
+Object.entries(KB).forEach(([file, doc], i) => {
+  const tab = document.createElement('button');
+  tab.className = 'kb-tab' + (i === 0 ? ' active' : '');
+  tab.textContent = doc.title;
+  tab.dataset.file = file;
+  tab.onclick = () => {
+    document.querySelectorAll('.kb-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.kb-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + file).classList.add('active');
+  };
+  tabsEl.appendChild(tab);
+
+  const panel = document.createElement('div');
+  panel.className = 'kb-panel' + (i === 0 ? ' active' : '');
+  panel.id = 'panel-' + file;
+  panel.innerHTML = `<h3 class="mono">${file}</h3><div class="kb-body">${doc.text}</div>`;
+  panelsEl.appendChild(panel);
+});
+
+/* ---- имитация search_knowledge_base: keyword-match по файлам ---- */
+function searchKnowledge(query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  let best = null;
+  for (const [file, doc] of Object.entries(KB)) {
+    const haystack = doc.text.toLowerCase();
+    const score = words.reduce((s, w) => s + (haystack.includes(w) ? 1 : 0), 0);
+    if (score > 0 && (!best || score > best.score)) best = { file, score, doc };
+  }
+  return best;
+}
+
+/* ---- имитация transfer_to_department ---- */
+const ESCALATION_RULES = [
+  { test: t => /человек|менеджер|специалист/.test(t), dept: "менеджер", reason: "абонент явно попросил человека" },
+  { test: t => /жалоб|возмущ|грозит|хам/.test(t), dept: "менеджер", reason: "высокий риск недовольства клиента" },
+  { test: t => /возврат|спис|не сход|ошибк.*счет|счёт/.test(t), dept: "биллинг", reason: "расхождение по счёту, нужна проверка" },
+  { test: t => /подключ.*(нов|хочу)|стать клиент/.test(t), dept: "продажи", reason: "новый клиент, интерес к подключению" },
+];
+
+function decide(userText) {
+  const lower = userText.toLowerCase();
+  const directEscalation = ESCALATION_RULES.find(r => r.test(lower));
+  const kbHit = searchKnowledge(userText);
+  return { directEscalation, kbHit };
+}
+
+/* ---- UI: трасса рассуждений ---- */
+const traceEl = document.getElementById('trace');
+function pushTrace(icon, html, cls) {
+  traceEl.innerHTML = '';
+  const item = document.createElement('div');
+  item.className = 'trace-item' + (cls ? ' ' + cls : '');
+  item.innerHTML = `<span class="ic">${icon}</span><span class="body">${html}</span>`;
+  traceEl.appendChild(item);
+  return item;
+}
+function appendTrace(icon, html, cls) {
+  const item = document.createElement('div');
+  item.className = 'trace-item' + (cls ? ' ' + cls : '');
+  item.innerHTML = `<span class="ic">${icon}</span><span class="body">${html}</span>`;
+  traceEl.appendChild(item);
+}
+
+/* ---- UI: чат ---- */
+const msgsEl = document.getElementById('msgs');
+function addMsg(role, text) {
+  const m = document.createElement('div');
+  m.className = 'msg ' + role;
+  m.textContent = text;
+  msgsEl.appendChild(m);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return m;
+}
+function addSystem(text) {
+  const m = document.createElement('div');
+  m.className = 'msg system';
+  m.textContent = text;
+  msgsEl.appendChild(m);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+function showTyping() {
+  const t = document.createElement('div');
+  t.className = 'typing';
+  t.id = 'typing-now';
+  t.innerHTML = '<span></span><span></span><span></span>';
+  msgsEl.appendChild(t);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+function hideTyping() {
+  const t = document.getElementById('typing-now');
+  if (t) t.remove();
+}
+
+addMsg('agent', 'Здравствуйте! Это «ТехноСтрим», меня зовут Hermes — чем могу помочь?');
+
+async function handleTurn(text) {
+  addMsg('user', text);
+  showTyping();
+
+  const { directEscalation, kbHit } = decide(text);
+
+  await new Promise(r => setTimeout(r, 500));
+  pushTrace('→', `Hermes вызывает <b>search_knowledge_base</b>(«${text}»)`);
+  await new Promise(r => setTimeout(r, 650));
+
+  if (kbHit) {
+    appendTrace('✓', `Нашёл совпадение в <b>${kbHit.file}</b> (score ${kbHit.score})`);
+  } else {
+    appendTrace('✗', `Ничего релевантного в базе знаний не найдено`);
+  }
+  await new Promise(r => setTimeout(r, 500));
+
+  hideTyping();
+
+  if (directEscalation) {
+    appendTrace('⇄', `Правило эскалации сработало → <b>transfer_to_department("${directEscalation.dept}")</b>`, 'transfer');
+    addMsg('agent', kbHit
+      ? `Понимаю. Сейчас соединю со специалистом — так будет быстрее и точнее.`
+      : `Хорошо, соединяю вас со специалистом.`);
+    addSystem(`Переведено на отдел: ${directEscalation.dept} — ${directEscalation.reason}`);
+    return;
+  }
+
+  if (kbHit) {
+    const firstLine = kbHit.doc.text.split('\n').filter(Boolean)[0];
+    addMsg('agent', firstLine);
+  } else {
+    appendTrace('⇄', `Нет фактов по теме → <b>transfer_to_department("продажи")</b>`, 'transfer');
+    addMsg('agent', `Сейчас не готов сказать точно — соединю со специалистом, чтобы не вводить вас в заблуждение.`);
+    addSystem('Переведено на отдел: продажи — вопрос вне базы знаний');
+  }
+}
+
+const input = document.getElementById('chat-input');
+const sendBtn = document.getElementById('chat-send');
+function submit() {
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  handleTurn(text);
+}
+sendBtn.addEventListener('click', submit);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+document.querySelectorAll('.suggestion').forEach(btn => {
+  btn.addEventListener('click', () => { input.value = btn.dataset.q; submit(); });
+});
+
+/* ---------------------------------------------------------------------
+   Voice chat widget (ElevenLabs-style) — реальный голос через встроенный
+   в браузер Web Speech API (SpeechRecognition + speechSynthesis), без
+   каких-либо ключей и без обращения к Claude. Отвечает по той же логике
+   decide()/searchKnowledge(), что и текстовый демо-чат выше.
+--------------------------------------------------------------------- */
+(function () {
+  const bubble = document.getElementById('voice-bubble');
+  const overlay = document.getElementById('voice-overlay');
+  const closeBtn = document.getElementById('voice-close');
+  const orb = document.getElementById('voice-orb');
+  const statusEl = document.getElementById('voice-status');
+  const subEl = document.getElementById('voice-sub');
+  const transcriptEl = document.getElementById('voice-transcript');
+  const micBtn = document.getElementById('voice-mic');
+  const endBtn = document.getElementById('voice-end');
+  const fallback = document.getElementById('voice-fallback');
+  const textInput = document.getElementById('voice-text-input');
+  const textSend = document.getElementById('voice-text-send');
+  const noteEl = document.getElementById('voice-note');
+
+  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognizer = null;
+  let listening = false;
+
+  function setOrbState(state) {
+    orb.className = 'orb-big' + (state ? ' ' + state : '');
+  }
+
+  function addVoiceLine(role, text) {
+    const line = document.createElement('div');
+    line.className = 'voice-line ' + role;
+    line.textContent = text;
+    transcriptEl.appendChild(line);
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  }
+
+  function speak(text) {
+    return new Promise(resolve => {
+      if (!('speechSynthesis' in window)) { resolve(); return; }
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'ru-RU';
+      const ruVoice = speechSynthesis.getVoices().find(v => v.lang && v.lang.startsWith('ru'));
+      if (ruVoice) utter.voice = ruVoice;
+      setOrbState('speaking');
+      statusEl.textContent = 'Hermes говорит…';
+      utter.onend = () => resolve();
+      utter.onerror = () => resolve();
+      speechSynthesis.speak(utter);
+    });
+  }
+
+  async function respondTo(userText) {
+    addVoiceLine('user', userText);
+    setOrbState('thinking');
+    statusEl.textContent = 'Hermes думает…';
+    subEl.textContent = 'ищет в базе знаний «ТехноСтрим»';
+    await new Promise(r => setTimeout(r, 650));
+
+    const { directEscalation, kbHit } = decide(userText);
+    let reply;
+    if (directEscalation) {
+      reply = kbHit
+        ? 'Понимаю. Сейчас соединю со специалистом — так будет быстрее и точнее.'
+        : 'Хорошо, соединяю вас со специалистом.';
+      subEl.textContent = 'переведено на отдел: ' + directEscalation.dept;
+    } else if (kbHit) {
+      reply = kbHit.doc.text.split('\n').filter(Boolean)[0];
+      subEl.textContent = 'источник: ' + kbHit.file;
+    } else {
+      reply = 'Сейчас не готов сказать точно — соединю со специалистом, чтобы не вводить вас в заблуждение.';
+      subEl.textContent = 'переведено на отдел: продажи';
+    }
+
+    addVoiceLine('agent', reply);
+    await speak(reply);
+
+    setOrbState(listening ? 'listening' : '');
+    statusEl.textContent = listening ? 'Слушаю…' : 'Нажмите на микрофон';
+    subEl.textContent = listening ? 'говорите' : 'Hermes ответит голосом';
+  }
+
+  function openPanel() {
+    overlay.classList.add('open');
+    if (transcriptEl.childElementCount === 0) {
+      addVoiceLine('agent', 'Здравствуйте! Это «ТехноСтрим», меня зовут Hermes — чем могу помочь?');
+    }
+    if (!SpeechRecognitionImpl) {
+      fallback.style.display = 'flex';
+      micBtn.style.display = 'none';
+      noteEl.textContent = 'Микрофон/распознавание недоступны в этом браузере — используйте текст ниже (ответ всё равно озвучивается)';
+    }
+  }
+  function closePanel() {
+    overlay.classList.remove('open');
+    stopListening();
+    speechSynthesis.cancel();
+  }
+
+  function startListening() {
+    if (!SpeechRecognitionImpl || listening) return;
+    recognizer = new SpeechRecognitionImpl();
+    recognizer.lang = 'ru-RU';
+    recognizer.interimResults = false;
+    recognizer.maxAlternatives = 1;
+
+    recognizer.onstart = () => {
+      listening = true;
+      micBtn.classList.add('active');
+      setOrbState('listening');
+      statusEl.textContent = 'Слушаю…';
+      subEl.textContent = 'говорите';
+    };
+    recognizer.onresult = (e) => {
+      const said = e.results[0][0].transcript;
+      respondTo(said);
+    };
+    recognizer.onerror = () => {
+      subEl.textContent = 'не расслышал — нажмите на микрофон ещё раз';
+    };
+    recognizer.onend = () => {
+      listening = false;
+      micBtn.classList.remove('active');
+      setOrbState('');
+      if (statusEl.textContent === 'Слушаю…') statusEl.textContent = 'Нажмите на микрофон';
+    };
+    try { recognizer.start(); } catch (err) { /* already started */ }
+  }
+  function stopListening() {
+    if (recognizer) { try { recognizer.stop(); } catch (err) {} }
+    listening = false;
+    micBtn.classList.remove('active');
+  }
+
+  bubble.addEventListener('click', openPanel);
+  closeBtn.addEventListener('click', closePanel);
+  endBtn.addEventListener('click', closePanel);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePanel(); });
+  micBtn.addEventListener('click', () => { listening ? stopListening() : startListening(); });
+
+  textSend.addEventListener('click', () => {
+    const v = textInput.value.trim();
+    if (!v) return;
+    textInput.value = '';
+    respondTo(v);
+  });
+  textInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') textSend.click();
+  });
+})();
+</script>
+</body>
+</html>
