@@ -5,13 +5,20 @@ class Settings(BaseSettings):
     # Claude & OpenAI
     anthropic_api_key: str
     anthropic_model: str = "claude-3-5-sonnet-20241022"  # проверить доступность для своего ключа
-    openai_api_key: str
+    openai_api_key: str = ""  # нужен только legacy-пути с Whisper (src/services/audio.py)
 
-    # Supabase
-    supabase_url: str
-    supabase_key: str
+    # Хранилище. По умолчанию — один SQLite-файл, без Redis и Supabase:
+    # cache_backend: сессии диалога ("sqlite" | "redis"),
+    # storage_backend: журнал звонков, таблица calls ("sqlite" | "supabase").
+    cache_backend: str = "sqlite"
+    storage_backend: str = "sqlite"
+    sqlite_path: str = "data/hermes.db"  # относительно корня репо
 
-    # Redis
+    # Supabase — только при storage_backend="supabase"
+    supabase_url: str = ""
+    supabase_key: str = ""
+
+    # Redis — только при cache_backend="redis"
     redis_url: str = "redis://localhost:6379"
 
     # Auth — ключ, которым МТС (или локальный скрипт теста) подписывает запросы

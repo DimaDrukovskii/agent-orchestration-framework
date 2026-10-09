@@ -1,3 +1,4 @@
+import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -181,7 +182,7 @@ async def hermes_dialog(request: HermesDialogRequest):
     except APITimeoutError as e:
         logger.error(f"[{request.session_id}] Claude timeout: {str(e)}")
         raise _unavailable("agent_timeout", "Агент не ответил вовремя")
-    except RedisError as e:
+    except (RedisError, sqlite3.Error) as e:
         logger.error(f"[{request.session_id}] Session store error: {str(e)}")
         raise _unavailable("session_store_unavailable", "Хранилище сессий недоступно")
     except Exception as e:

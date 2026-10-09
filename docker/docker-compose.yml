@@ -16,6 +16,8 @@ services:
       - AGENT_API_KEY=${AGENT_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CACHE_BACKEND=redis
+      - STORAGE_BACKEND=supabase
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis

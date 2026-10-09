@@ -1,9 +1,7 @@
 import os
+import tempfile
 
-# src.config.Settings требует эти поля без дефолта (реальные ключи на хакатоне
-# берутся из .env). Для тестов — фиктивные значения, чтобы не тянуть .env;
-# ни один тест не делает реальный сетевой вызов к Anthropic/Supabase.
+# Для тестов нужен только ключ-заглушка Anthropic; SQLite-файл — во временной
+# папке, чтобы тесты не трогали data/hermes.db. Ни один тест не ходит в сеть.
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
-os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
-os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
-os.environ.setdefault("SUPABASE_KEY", "test-supabase-key")
+os.environ.setdefault("SQLITE_PATH", os.path.join(tempfile.mkdtemp(prefix="hermes-test-"), "test.db"))

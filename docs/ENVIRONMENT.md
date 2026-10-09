@@ -1,6 +1,6 @@
 # Переменные окружения
 
-Создай `.env` в корне репозитория (не коммитится — см. `.gitignore`). Ниже — все поля, которые упоминаются в документации проекта: обязательные сейчас, обязательные по коду но не используемые Hermes, и запланированные (кода под них ещё нет).
+Создай `.env` в корне репозитория (не коммитится — см. `.gitignore`). Ниже — все поля, которые упоминаются в документации проекта: обязательные сейчас, настройки хранилища и запланированные (кода под них ещё нет).
 
 ## Обязательно сейчас
 
@@ -8,21 +8,22 @@
 |---|---|---|
 | `ANTHROPIC_API_KEY` | `src/services/llm.py`, `src/agent/hermes_agent.py` | без него Hermes не запустится |
 
-## Обязательны по коду, но Hermes их не трогает
+## Хранилище — по умолчанию SQLite, ничего поднимать не нужно
 
-`Settings` в `src/config.py` — pydantic, требует непустые значения, даже если конкретная фича ими не пользуется.
+Сессии диалога и журнал звонков (`calls`) лежат в одном файле `data/hermes.db` (создаётся сам, в `.gitignore`). Redis и Supabase нужны только если явно переключить бэкенд.
 
-| Переменная | Где используется | Статус |
+| Переменная | Дефолт | Значения |
 |---|---|---|
-| `OPENAI_API_KEY` | `src/services/audio.py` (Whisper, только main-ветка) | заглушка подойдёт, если не трогаешь main |
-| `SUPABASE_URL` | `src/services/storage.py` | заглушка подойдёт |
-| `SUPABASE_KEY` | `src/services/storage.py` | заглушка подойдёт |
+| `CACHE_BACKEND` | `sqlite` | `sqlite` \| `redis` (тогда нужен `REDIS_URL`) |
+| `STORAGE_BACKEND` | `sqlite` | `sqlite` \| `supabase` (тогда нужны `SUPABASE_URL`, `SUPABASE_KEY`; схема — `docs/DATABASE_SCHEMA.md`) |
+| `SQLITE_PATH` | `data/hermes.db` | путь к файлу, относительный — от корня репо |
+| `OPENAI_API_KEY` | `""` | только legacy-путь с Whisper (`src/services/audio.py`) |
 
 ## Есть дефолты в коде — можно не трогать
 
 | Переменная | Дефолт | Где |
 |---|---|---|
-| `REDIS_URL` | `redis://localhost:6379` | `src/config.py`, вероятно и асинхронные `queue.py`/`worker.py` |
+| `REDIS_URL` | `redis://localhost:6379` | `src/config.py` — используется только при `CACHE_BACKEND=redis` |
 | `AGENT_API_KEY` | `test-local-key` | `src/config.py` — подпись запросов к `/api/hermes/*`; для прода переопределить |
 | `TELEGRAM_BOT_TOKEN` | `""` (пусто) | `src/config.py` + `src/services/telegram.py` — пусто = отправка выключена |
 | `TELEGRAM_CHAT_ID` | `""` (пусто) | `src/config.py` — куда слать уведомление о переводе звонка |
@@ -42,16 +43,17 @@
 ## Готовый .env целиком
 
 ```bash
-# Обязательно
+# Обязательно — больше ничего для запуска не нужно
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Обязательны по коду, но Hermes их не трогает — заглушки подойдут
-OPENAI_API_KEY=sk-placeholder
-SUPABASE_URL=https://placeholder.supabase.co
-SUPABASE_KEY=placeholder
+# Хранилище (дефолт — SQLite, строки можно не писать)
+CACHE_BACKEND=sqlite
+STORAGE_BACKEND=sqlite
+SQLITE_PATH=data/hermes.db
+# Для Redis/Supabase: CACHE_BACKEND=redis, STORAGE_BACKEND=supabase,
+# REDIS_URL=..., SUPABASE_URL=..., SUPABASE_KEY=...
 
 # Есть дефолты, можно не трогать
-REDIS_URL=redis://localhost:6379
 AGENT_API_KEY=test-local-key
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=

@@ -2,6 +2,9 @@
 
 ## Setup
 
+> **SQLite (дефолт).** При `STORAGE_BACKEND=sqlite` (`src/services/sqlite_store.py`) таблица `calls` создаётся сама в `data/hermes.db` с теми же колонками, что ниже; SQL ниже нужен только для Supabase. Таблицы `api_clients`, `call_feedback`, `agent_metrics` в SQLite-схему не входят.
+
+
 Запусти это в Supabase SQL Editor.
 
 ```sql

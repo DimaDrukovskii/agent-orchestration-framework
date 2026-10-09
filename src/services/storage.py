@@ -7,10 +7,19 @@ from typing import Optional, List
 
 class StorageService:
     def __init__(self):
-        self.client: Client = create_client(
-            settings.supabase_url,
-            settings.supabase_key
-        )
+        self._sqlite = None
+        self.client: Optional[Client] = None
+        if settings.storage_backend == "sqlite":
+            from src.services.sqlite_store import SqliteStorage
+
+            self._sqlite = SqliteStorage(settings.sqlite_path)
+        elif settings.storage_backend == "supabase":
+            self.client = create_client(
+                settings.supabase_url,
+                settings.supabase_key
+            )
+        else:
+            raise ValueError(f"Неизвестный STORAGE_BACKEND: {settings.storage_backend}")
     
     async def save_call(
         self,
@@ -23,7 +32,12 @@ class StorageService:
         """Save call record to database"""
         try:
             logger.info(f"Saving call {call_id} to database")
-            
+
+            if self._sqlite:
+                return await self._sqlite.save_call(
+                    call_id, caller_phone, transcript, agent_response, action
+                )
+
             data = {
                 "call_id": call_id,
                 "caller_phone": caller_phone,
@@ -57,6 +71,11 @@ class StorageService:
         уникальном индексе calls.call_id.
         """
         try:
+            if self._sqlite:
+                return await self._sqlite.upsert_call(
+                    call_id, caller_phone, transcript, agent_response, action
+                )
+
             data = {
                 "call_id": call_id,
                 "caller_phone": caller_phone,
@@ -78,6 +97,9 @@ class StorageService:
     async def get_call(self, call_id: str) -> Optional[dict]:
         """Retrieve call record"""
         try:
+            if self._sqlite:
+                return await self._sqlite.get_call(call_id)
+
             response = self.client.table("calls").select("*").eq("call_id", call_id).execute()
             return response.data[0] if response.data else None
         
@@ -93,6 +115,9 @@ class StorageService:
         когда появится больше одного бизнеса, auth.py переключится на
         поиск здесь вместо settings.agent_api_key.
         """
+        if self._sqlite:
+            return None  # таблицы api_clients в SQLite-схеме нет — не подключено
+
         try:
             response = (
                 self.client.table("api_clients")
@@ -110,6 +135,9 @@ class StorageService:
     async def get_caller_history(self, caller_phone: str, limit: int = 10) -> List[dict]:
         """Get call history for a caller"""
         try:
+            if self._sqlite:
+                return await self._sqlite.get_caller_history(caller_phone, limit)
+
             response = (
                 self.client.table("calls")
                 .select("*")
