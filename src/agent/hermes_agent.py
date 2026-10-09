@@ -8,7 +8,7 @@ Hermes-агент — ReAct-цикл поверх Claude tool use.
 """
 
 from typing import List, Dict, Any, AsyncGenerator
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from src.config import settings
 from src.agent.tools import TOOLS_SCHEMA, execute_tool
 from src.agent.hermes_prompts import HERMES_SYSTEM_PROMPT
@@ -19,7 +19,7 @@ MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агент
 
 class HermesAgent:
     def __init__(self):
-        self.client = Anthropic(api_key=settings.anthropic_api_key)
+        self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.model = "claude-3-5-sonnet-20241022"
 
     async def run(
@@ -44,7 +44,7 @@ class HermesAgent:
         for iteration in range(MAX_TOOL_ITERATIONS):
             logger.info(f"Hermes iteration {iteration + 1}, phone={mask_phone(caller_phone)}")
 
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=600,
                 system=HERMES_SYSTEM_PROMPT,
@@ -91,7 +91,7 @@ class HermesAgent:
 
         # Если дошли сюда — либо лимит итераций, либо был transfer:
         # просим Claude сформулировать финальную реплику абоненту
-        closing = self.client.messages.create(
+        closing = await self.client.messages.create(
             model=self.model,
             max_tokens=300,
             system=HERMES_SYSTEM_PROMPT,
@@ -122,11 +122,11 @@ class HermesAgent:
         собирать блоки — здесь упрощённая версия БЕЗ tool calls в стриме.
         Для ответов, требующих tool (цифры, инструкции) — используй run().
         """
-        with self.client.messages.stream(
+        async with self.client.messages.stream(
             model=self.model,
             max_tokens=600,
             system=HERMES_SYSTEM_PROMPT,
             messages=messages
         ) as stream:
-            for text in stream.text_stream:
+            async for text in stream.text_stream:
                 yield text

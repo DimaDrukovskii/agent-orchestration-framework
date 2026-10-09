@@ -1,3 +1,4 @@
+import asyncio
 from supabase import create_client, Client
 from src.config import settings
 from src.utils import logger
@@ -65,7 +66,9 @@ class StorageService:
                 "updated_at": "now()",
             }
 
-            response = self.client.table("calls").upsert(data, on_conflict="call_id").execute()
+            response = await asyncio.to_thread(
+                lambda: self.client.table("calls").upsert(data, on_conflict="call_id").execute()
+            )
             return response.data[0] if response.data else {}
 
         except Exception as e:
