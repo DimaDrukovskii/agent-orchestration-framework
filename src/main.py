@@ -1,7 +1,10 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.api import routes
 from src.api import hermes_routes
+from src.api import hermes_async_routes
+from src.worker import run_worker
 from src.utils import logger
 
 app = FastAPI(
@@ -22,10 +25,19 @@ app.add_middleware(
 # Routes
 app.include_router(routes.router, prefix="/api")
 app.include_router(hermes_routes.router, prefix="/api")
+app.include_router(hermes_async_routes.router, prefix="/api")
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "1.1.0-hermes"}
+
+@app.on_event("startup")
+async def start_background_worker():
+    # Скелет под нагрузку МТС (docs/SCALING_PLAN.md §4.1) — фоновая задача
+    # в этом же процессе, не отдельный воркер-процесс. Этого достаточно,
+    # чтобы показать структуру; реальное горизонтальное масштабирование
+    # воркера — когда очередь переедет на Redis/SQS.
+    asyncio.create_task(run_worker())
 
 if __name__ == "__main__":
     import uvicorn
