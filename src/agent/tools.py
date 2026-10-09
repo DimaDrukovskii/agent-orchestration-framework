@@ -70,7 +70,10 @@ def search_knowledge_base(query: str) -> str:
     """Простой поиск по markdown-файлам базы знаний (keyword match)."""
     try:
         results = []
-        files = glob.glob(os.path.join(KNOWLEDGE_DIR, "*.md"))
+        files = [
+            f for f in glob.glob(os.path.join(KNOWLEDGE_DIR, "*.md"))
+            if os.path.basename(f).lower() != "readme.md"
+        ]
         query_words = query.lower().split()
 
         for filepath in files:
