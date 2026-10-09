@@ -15,6 +15,7 @@
 import argparse
 import asyncio
 import json
+import os
 import uuid
 from typing import List, Tuple
 
@@ -22,6 +23,12 @@ import httpx
 
 BASE_URL = "http://localhost:8000"
 CALLER_PHONE = "+79991234567"
+
+# Тот же ключ, что сервер ждёт в X-API-Key (settings.agent_api_key).
+# Для прогонов с "боевым" ключом — выставить AGENT_API_KEY в окружении
+# перед запуском скрипта, подставлять сюда ничего не нужно.
+API_KEY = os.environ.get("AGENT_API_KEY", "test-local-key")
+HEADERS = {"X-API-Key": API_KEY}
 
 # Сценарии из docs/TRACK1_PLAN.md -> "Тестирование без живого звонка"
 SCENARIOS: List[Tuple[str, List[str]]] = [
@@ -57,7 +64,7 @@ async def send_turn(client: httpx.AsyncClient, session_id: str, message: str) ->
         "caller_phone": CALLER_PHONE,
         "user_message": message,
     }
-    r = await client.post(f"{BASE_URL}/api/hermes/dialog", json=payload, timeout=30.0)
+    r = await client.post(f"{BASE_URL}/api/hermes/dialog", json=payload, headers=HEADERS, timeout=30.0)
     r.raise_for_status()
     return r.json()
 

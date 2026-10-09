@@ -39,6 +39,39 @@ class StorageService:
             logger.error(f"Error saving call: {str(e)}")
             raise
     
+    async def upsert_call(
+        self,
+        call_id: str,
+        caller_phone: str,
+        transcript: str,
+        agent_response: str,
+        action: str
+    ) -> dict:
+        """
+        Записать/обновить звонок по call_id (= session_id у Hermes).
+
+        В отличие от save_call (чистый insert, одна запись на звонок),
+        Hermes пишет на каждую реплику диалога одним и тем же call_id —
+        поэтому upsert, а не insert, иначе второй же вызов упадёт на
+        уникальном индексе calls.call_id.
+        """
+        try:
+            data = {
+                "call_id": call_id,
+                "caller_phone": caller_phone,
+                "transcript": transcript,
+                "agent_response": agent_response,
+                "action": action,
+                "updated_at": "now()",
+            }
+
+            response = self.client.table("calls").upsert(data, on_conflict="call_id").execute()
+            return response.data[0] if response.data else {}
+
+        except Exception as e:
+            logger.error(f"Error upserting call: {str(e)}")
+            raise
+
     async def get_call(self, call_id: str) -> Optional[dict]:
         """Retrieve call record"""
         try:

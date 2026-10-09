@@ -33,14 +33,14 @@
 
 | Область | Сейчас | Целевое состояние |
 |---|---|---|
-| Роутинг | `hermes_routes.router` не подключён в `src/main.py` — `/api/hermes/dialog` отдаёт 404 | Подключён, это основной и единственный публичный путь |
-| Сессии Hermes | `_sessions: Dict` в памяти процесса (`hermes_routes.py`) — падение процесса = потеря всех разговоров | `CacheService` (Redis, уже есть в `src/services/cache.py`, просто не подключён к Hermes) с TTL |
-| Персист в БД | Hermes ничего не пишет в Supabase | Переиспользовать существующий `StorageService.save_call` / таблицу `calls` (схема уже есть в `docs/DATABASE_SCHEMA.md`) — не изобретать новую таблицу |
+| Роутинг | ✅ Сделано — `hermes_routes.router` подключён в `src/main.py` | Основной и единственный публичный путь |
+| Сессии Hermes | ✅ Сделано — `CacheService` (Redis), TTL `settings.hermes_session_ttl_seconds` (30 мин) вместо `_sessions: Dict` в памяти | — |
+| Персист в БД | ✅ Сделано — `StorageService.upsert_call` на каждую реплику, таблица `calls` (та же, что у `CallOrchestrator`) | — |
+| Аутентификация | ✅ Сделано (MVP) — `X-API-Key` против одного общего ключа `settings.agent_api_key` (`src/api/auth.py`) | Ключ на бизнеса, не общий (таблица `api_clients`, см. §7 Этап 1) |
 | База знаний | `data/knowledge/` не существует — `search_knowledge_base` всегда "ничего не найдено" | Папка с `.md`-файлами тарифов/FAQ; формат поиска оставить как есть (keyword match), апгрейд на embeddings — отдельная, не блокирующая задача |
-| Аутентификация | Нет — любой может дёрнуть эндпоинт | API-ключ в заголовке (см. §3) |
-| Rate limiting | Спроектирован в `docs/ARCHITECTURE.md`, не реализован | `CacheService.increment` уже даёт примитив — обернуть в middleware |
+| Rate limiting | Спроектирован в `docs/ARCHITECTURE.md`, не реализован | `CacheService.increment` уже даёт примитив — обернуть в middleware, лимит привязать к ключу из `api_clients` |
 | Тесты | `tests/test_api.py` бьёт по несуществующему `/api/process_call` | Контрактные тесты на основе уже существующих сценариев из `scripts/test_call.py` (см. §5) — не придумываем новые требования, оформляем то, что уже решено |
-| Масштабирование | Один процесс, state в памяти | Stateless-процессы за балансировщиком, весь state — в Redis/Postgres (см. §4) |
+| Масштабирование | Процесс stateless (сессии/персист теперь внешние), но ещё не прогнано под нагрузкой | Горизонтальное масштабирование за балансировщиком подтверждено нагрузочным прогоном (см. §4) |
 
 ## 2. Контракт для МТС — что фиксируем и не меняем без версии
 
@@ -202,14 +202,15 @@ MVP остаётся синхронным (запрос → ответ в одн
 ## 7. Поэтапный план
 
 **Этап 0 — разблокировать то, что сломано (без этого остальное не имеет смысла)**
-- Подключить `hermes_routes.router` в `src/main.py`.
-- Создать `data/knowledge/` с минимальным набором тарифов/FAQ.
-- Прогнать `scripts/test_call.py` — убедиться, что все 4 сценария реально работают.
+- ✅ Подключить `hermes_routes.router` в `src/main.py`.
+- ⬜ Создать `data/knowledge/` с минимальным набором тарифов/FAQ.
+- ⬜ Прогнать `scripts/test_call.py` (с заголовком `X-API-Key`) — убедиться, что все 4 сценария реально работают на живых ключах Claude/Supabase/Redis, не только по коду.
 
 **Этап 1 — убрать блокеры масштабирования**
-- Сессии Hermes → `CacheService` (Redis) вместо `_sessions: Dict`.
-- Персист разговоров Hermes → `StorageService.save_call`, как уже сделано в `CallOrchestrator`.
-- API-ключ на входе (`X-API-Key`, таблица `api_clients`), rate limit через `CacheService.increment`.
+- ✅ Сессии Hermes → `CacheService` (Redis) вместо `_sessions: Dict`.
+- ✅ Персист разговоров Hermes → `StorageService.upsert_call`, как уже сделано в `CallOrchestrator` (upsert, а не insert — у Hermes один `call_id` на весь диалог, не на реплику).
+- ✅ API-ключ на входе (`X-API-Key`) — MVP-версия: один общий ключ (`settings.agent_api_key` / env `AGENT_API_KEY`), не таблица `api_clients`. Таблица на ключ-на-бизнеса — осталась как есть, следующий шаг, не блокер демо.
+- ⬜ Rate limit через `CacheService.increment`.
 
 **Этап 2 — зафиксировать контракт**
 - Путь `/api/v1/hermes/dialog`, единый формат ошибки, документация в

@@ -12,10 +12,16 @@ class Settings(BaseSettings):
     
     # Redis
     redis_url: str = "redis://localhost:6379"
-    
+
+    # Auth — ключ, которым МТС (или локальный скрипт теста) подписывает запросы
+    # к /api/hermes/*. Дефолт — только для локального запуска без .env;
+    # для прода и для "своего" ключа тестов переопределить AGENT_API_KEY в .env.
+    agent_api_key: str = "test-local-key"
+
     # Server
     max_call_duration_seconds: int = 600
     agent_timeout_seconds: int = 30
+    hermes_session_ttl_seconds: int = 1800  # 30 минут, как в docs/ARCHITECTURE.md
     log_level: str = "INFO"
     
     class Config:
