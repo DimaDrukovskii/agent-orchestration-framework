@@ -19,8 +19,11 @@ MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агент
 
 class HermesAgent:
     def __init__(self):
-        self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self.model = "claude-3-5-sonnet-20241022"
+        self.client = AsyncAnthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=settings.agent_timeout_seconds,
+        )
+        self.model = settings.anthropic_model
 
     async def run(
         self,

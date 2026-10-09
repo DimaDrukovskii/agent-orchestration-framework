@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from anthropic import APITimeoutError
+from redis.exceptions import RedisError
 from src.agent.hermes_agent import HermesAgent
 from src.api.auth import verify_api_key
 from src.config import settings
@@ -25,6 +27,14 @@ class HermesDialogResponse(BaseModel):
     session_id: str
     agent_response: str
     transfer: Optional[Dict[str, Any]] = None
+    persisted: bool = True
+
+
+def _unavailable(code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={"error": {"code": code, "message": message, "retryable": True}},
+    )
 
 
 def _session_key(session_id: str) -> str:
@@ -100,14 +110,15 @@ async def _persist_turn(
     messages: List[Dict[str, Any]],
     agent_response: str,
     pending_transfer: Optional[Dict[str, Any]]
-) -> None:
+) -> bool:
     """
     Записать текущее состояние разговора в Supabase (та же таблица `calls`,
     что уже использует CallOrchestrator — не вводим новую схему).
 
-    Как и в CallOrchestrator.save_call: ошибка персиста не должна ронять
-    ответ абоненту, поэтому ловим исключение здесь, а не даём ему всплыть.
+    Ошибка персиста не роняет ответ абоненту, но возвращается как persisted=False,
+    чтобы вызывающая сторона видела, что история не сохранилась.
     """
+    persisted = True
     try:
         from src.services.storage import StorageService
         storage = StorageService()
@@ -119,6 +130,7 @@ async def _persist_turn(
             action="transfer" if pending_transfer else "in_progress"
         )
     except Exception as e:
+        persisted = False
         logger.error(f"[{session_id}] Hermes persist error: {str(e)}")
 
     if pending_transfer:
@@ -131,6 +143,8 @@ async def _persist_turn(
             )
         except Exception as e:
             logger.error(f"[{session_id}] Telegram notify error: {str(e)}")
+
+    return persisted
 
 
 @router.post("/hermes/dialog", response_model=HermesDialogResponse)
@@ -149,7 +163,7 @@ async def hermes_dialog(request: HermesDialogRequest):
         result = await hermes.run(messages=history, caller_phone=request.caller_phone)
 
         await _save_session(request.session_id, request.caller_phone, result["messages"])
-        await _persist_turn(
+        persisted = await _persist_turn(
             session_id=request.session_id,
             caller_phone=request.caller_phone,
             messages=result["messages"],
@@ -160,9 +174,16 @@ async def hermes_dialog(request: HermesDialogRequest):
         return HermesDialogResponse(
             session_id=request.session_id,
             agent_response=result["response"],
-            transfer=result["pending_transfer"]
+            transfer=result["pending_transfer"],
+            persisted=persisted
         )
 
+    except APITimeoutError as e:
+        logger.error(f"[{request.session_id}] Claude timeout: {str(e)}")
+        raise _unavailable("agent_timeout", "Агент не ответил вовремя")
+    except RedisError as e:
+        logger.error(f"[{request.session_id}] Session store error: {str(e)}")
+        raise _unavailable("session_store_unavailable", "Хранилище сессий недоступно")
     except Exception as e:
         logger.error(f"Hermes dialog error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -13,7 +13,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ src/
-COPY .env.example .env
+COPY data/ data/
+COPY demo/ demo/
+
+# Переменные окружения приходят из docker-compose `environment:` (или -e при
+# docker run) — pydantic-settings читает их из os.environ независимо от .env.
+# Файла .env в образе нет и не нужен; не копируем несуществующий .env.example.
 
 # Expose port
 EXPOSE 8000

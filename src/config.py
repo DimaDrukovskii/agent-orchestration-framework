@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Claude & OpenAI
     anthropic_api_key: str
+    anthropic_model: str = "claude-3-5-sonnet-20241022"  # проверить доступность для своего ключа
     openai_api_key: str
 
     # Supabase
