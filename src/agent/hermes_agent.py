@@ -12,7 +12,7 @@ from anthropic import Anthropic
 from src.config import settings
 from src.agent.tools import TOOLS_SCHEMA, execute_tool
 from src.agent.hermes_prompts import HERMES_SYSTEM_PROMPT
-from src.utils import logger
+from src.utils import logger, mask_phone
 
 MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агента
 
@@ -42,7 +42,7 @@ class HermesAgent:
         pending_transfer = None
 
         for iteration in range(MAX_TOOL_ITERATIONS):
-            logger.info(f"Hermes iteration {iteration + 1}, phone={caller_phone}")
+            logger.info(f"Hermes iteration {iteration + 1}, phone={mask_phone(caller_phone)}")
 
             response = self.client.messages.create(
                 model=self.model,

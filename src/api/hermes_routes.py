@@ -6,7 +6,7 @@ from src.agent.hermes_agent import HermesAgent
 from src.api.auth import verify_api_key
 from src.config import settings
 from src.services.cache import CacheService
-from src.utils import logger
+from src.utils import logger, mask_phone
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 hermes = HermesAgent()
@@ -29,6 +29,8 @@ class HermesDialogResponse(BaseModel):
 
 def _session_key(session_id: str) -> str:
     return f"hermes_session:{session_id}"
+
+
 
 
 def _to_plain(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -118,6 +120,17 @@ async def _persist_turn(
         )
     except Exception as e:
         logger.error(f"[{session_id}] Hermes persist error: {str(e)}")
+
+    if pending_transfer:
+        try:
+            from src.services.telegram import send_message
+            await send_message(
+                settings.telegram_chat_id,
+                f"Звонок от {mask_phone(caller_phone)} переведён на "
+                f"{pending_transfer.get('department', '?')}: {pending_transfer.get('reason', '')}",
+            )
+        except Exception as e:
+            logger.error(f"[{session_id}] Telegram notify error: {str(e)}")
 
 
 @router.post("/hermes/dialog", response_model=HermesDialogResponse)

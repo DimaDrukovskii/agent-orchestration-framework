@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Подключение агента</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f5f5f5;
+        color: #222;
+        display: flex;
+        justify-content: center;
+        padding: 40px 16px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 32px;
+        max-width: 480px;
+        width: 100%;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      }
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      .sub { color: #666; font-size: 14px; margin-bottom: 24px; }
+      label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+      input {
+        width: 100%;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      .hint { font-size: 11px; color: #999; margin-bottom: 18px; }
+      button {
+        width: 100%;
+        background: #e30611;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: default; }
+      #result {
+        margin-top: 18px;
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+        display: none;
+      }
+      #result.ok { background: #e6f4ea; color: #1e7b34; display: block; }
+      #result.err { background: #fdecea; color: #a52a1e; display: block; }
+      nav { font-size: 13px; margin-bottom: 20px; }
+      nav a { color: #e30611; text-decoration: none; margin-right: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <nav>
+        <a href="/demo/">Чат</a>
+        <a href="/demo/history.html">История</a>
+      </nav>
+      <h1>Подключение за 5 минут</h1>
+      <p class="sub">Подключение агента сводится к API-ключу и адресу вебхука — без отдельной регистрации.</p>
+
+      <label for="apiKey">API-ключ</label>
+      <input id="apiKey" type="text" placeholder="например, test-local-key" />
+      <div class="hint">Сверяется с заголовком X-API-Key на сервере.</div>
+
+      <label for="webhookUrl">URL вебхука</label>
+      <input id="webhookUrl" type="text" placeholder="https://example.com/webhook" />
+      <div class="hint">Заглушка для интеграции: поле только сохраняется в этой вкладке, никуда не отправляется.</div>
+
+      <button onclick="checkConnection()">Проверить подключение</button>
+      <div id="result"></div>
+    </div>
+
+    <script>
+      document.getElementById("apiKey").value = sessionStorage.getItem("mts_api_key") || "";
+      document.getElementById("webhookUrl").value = sessionStorage.getItem("mts_webhook_url") || "";
+
+      function showResult(ok, text) {
+        const el = document.getElementById("result");
+        el.className = ok ? "ok" : "err";
+        el.textContent = text;
+      }
+
+      async function checkConnection() {
+        const apiKey = document.getElementById("apiKey").value.trim();
+        const webhookUrl = document.getElementById("webhookUrl").value.trim();
+        sessionStorage.setItem("mts_api_key", apiKey);
+        sessionStorage.setItem("mts_webhook_url", webhookUrl);
+
+        const btn = document.querySelector("button");
+        btn.disabled = true;
+        showResult(true, "Проверяю…");
+
+        try {
+          const health = await fetch("/health");
+          if (!health.ok) {
+            showResult(false, "Сервер недоступен.");
+            return;
+          }
+
+          const dialog = await fetch("/api/hermes/dialog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+            body: JSON.stringify({
+              session_id: "connect-check-" + Date.now(),
+              caller_phone: "+79990000000",
+              user_message: "Тестовое сообщение проверки подключения",
+            }),
+          });
+
+          if (dialog.status === 401) {
+            showResult(false, "Неверный API-ключ.");
+            return;
+          }
+          if (!dialog.ok) {
+            showResult(false, "Агент временно недоступен (код " + dialog.status + ").");
+            return;
+          }
+
+          showResult(true, "Готово — агент отвечает.");
+        } catch (e) {
+          showResult(false, "Сервер недоступен.");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    </script>
+  </body>
+</html>

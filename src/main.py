@@ -1,6 +1,7 @@
 import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from src.api import routes
 from src.api import hermes_routes
 from src.api import hermes_async_routes
@@ -26,6 +27,11 @@ app.add_middleware(
 app.include_router(routes.router, prefix="/api")
 app.include_router(hermes_routes.router, prefix="/api")
 app.include_router(hermes_async_routes.router, prefix="/api")
+
+# Демо-страницы (чат, подключение, история) — тот же origin, что и /api,
+# иначе fetch('/api/...') из demo/*.html упирается в CORS/file:// при
+# открытии файла напрямую. html=True отдаёт index.html на /demo/.
+app.mount("/demo", StaticFiles(directory="demo", html=True), name="demo")
 
 @app.get("/health")
 async def health_check():

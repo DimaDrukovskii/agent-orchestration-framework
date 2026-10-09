@@ -24,7 +24,8 @@
 |---|---|---|
 | `REDIS_URL` | `redis://localhost:6379` | `src/config.py`, вероятно и асинхронные `queue.py`/`worker.py` |
 | `AGENT_API_KEY` | `test-local-key` | `src/config.py` — подпись запросов к `/api/hermes/*`; для прода переопределить |
-| `TELEGRAM_BOT_TOKEN` | `""` (пусто) | `src/config.py` — поле уже есть, сама отправка (`src/services/telegram.py`) ещё не написана |
+| `TELEGRAM_BOT_TOKEN` | `""` (пусто) | `src/config.py` + `src/services/telegram.py` — пусто = отправка выключена |
+| `TELEGRAM_CHAT_ID` | `""` (пусто) | `src/config.py` — куда слать уведомление о переводе звонка |
 | `MAX_CALL_DURATION_SECONDS` | `600` | `src/config.py` |
 | `AGENT_TIMEOUT_SECONDS` | `30` | `src/config.py` |
 | `HERMES_SESSION_TTL_SECONDS` | `1800` | `src/config.py` — 30 минут, как в `docs/ARCHITECTURE.md` |
@@ -53,6 +54,7 @@ SUPABASE_KEY=placeholder
 REDIS_URL=redis://localhost:6379
 AGENT_API_KEY=test-local-key
 TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 MAX_CALL_DURATION_SECONDS=600
 AGENT_TIMEOUT_SECONDS=30
 HERMES_SESSION_TTL_SECONDS=1800

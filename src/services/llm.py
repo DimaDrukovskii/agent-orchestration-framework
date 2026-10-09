@@ -1,6 +1,6 @@
 from anthropic import Anthropic
 from src.config import settings
-from src.utils import logger
+from src.utils import logger, mask_phone
 from src.agent.prompts import MTS_SYSTEM_PROMPT, DETERMINE_ACTION_PROMPT
 from typing import Optional
 import json
@@ -23,7 +23,7 @@ class LLMService:
         Returns agent's response to caller.
         """
         try:
-            logger.info(f"LLM: Processing call from {caller_phone}")
+            logger.info(f"LLM: Processing call from {mask_phone(caller_phone)}")
             
             user_prompt = f"""Абонент: {caller_phone}
 Контекст: {context or 'общий запрос'}
@@ -61,7 +61,7 @@ class LLMService:
         Messages format: [{"role": "user"|"assistant", "content": "..."}, ...]
         """
         try:
-            logger.info(f"LLM Dialog: {len(messages)} messages from {caller_phone}")
+            logger.info(f"LLM Dialog: {len(messages)} messages from {mask_phone(caller_phone)}")
             
             message = self.client.messages.create(
                 model=self.model,

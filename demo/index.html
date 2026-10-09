@@ -301,6 +301,154 @@
         line-height: 1.8;
       }
 
+      /* Chat demo (additive, не трогает вёрстку лендинга выше) */
+      .chat-fab {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: #e30611;
+        color: #fff;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        z-index: 999998;
+      }
+
+      .chat-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        z-index: 999999;
+        align-items: flex-end;
+        justify-content: flex-end;
+        padding: 24px;
+      }
+
+      .chat-modal.open {
+        display: flex;
+      }
+
+      .chat-panel {
+        background: #fff;
+        width: 380px;
+        max-width: calc(100vw - 32px);
+        height: 560px;
+        max-height: calc(100vh - 48px);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+      }
+
+      .chat-head {
+        background: #e30611;
+        color: #fff;
+        padding: 14px 16px;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .chat-head button {
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+      }
+
+      .chat-keyrow {
+        padding: 10px 12px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        gap: 6px;
+      }
+
+      .chat-keyrow input {
+        flex: 1;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .chat-keyrow span {
+        font-size: 11px;
+        color: #888;
+        display: block;
+        margin-top: 4px;
+      }
+
+      .chat-msgs {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .chat-msg {
+        max-width: 85%;
+        padding: 9px 13px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .chat-msg.user {
+        align-self: flex-end;
+        background: #e30611;
+        color: #fff;
+      }
+
+      .chat-msg.agent {
+        align-self: flex-start;
+        background: #f0f0f0;
+        color: #222;
+      }
+
+      .chat-msg.system {
+        align-self: center;
+        background: #fff3cd;
+        color: #7a5b00;
+        font-size: 12px;
+        border-radius: 999px;
+        padding: 6px 12px;
+      }
+
+      .chat-inputrow {
+        display: flex;
+        gap: 8px;
+        padding: 12px;
+        border-top: 1px solid #eee;
+      }
+
+      .chat-inputrow input {
+        flex: 1;
+        border: 1px solid #ddd;
+        border-radius: 999px;
+        padding: 10px 14px;
+        font-size: 14px;
+      }
+
+      .chat-inputrow button {
+        background: #e30611;
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 10px 18px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
       @media (max-width: 768px) {
         .hero h1 {
           font-size: 32px;
@@ -591,9 +739,108 @@
       </div>
     </footer>
 
+    <!-- Chat demo -->
+    <button class="chat-fab" onclick="startChat()" aria-label="Открыть чат">💬</button>
+    <div class="chat-modal" id="chatModal">
+      <div class="chat-panel">
+        <div class="chat-head">
+          <span>МТС AI-Agent — чат</span>
+          <button onclick="closeChat()" aria-label="Закрыть">✕</button>
+        </div>
+        <div class="chat-keyrow">
+          <input
+            id="apiKeyInput"
+            type="text"
+            placeholder="API-ключ (X-API-Key)"
+          />
+          <span>Ключ хранится только в этой вкладке (sessionStorage).</span>
+        </div>
+        <div class="chat-msgs" id="chatMsgs"></div>
+        <div class="chat-inputrow">
+          <input
+            id="chatInput"
+            type="text"
+            placeholder="Напишите сообщение…"
+            onkeydown="if(event.key==='Enter') sendChatMessage()"
+          />
+          <button onclick="sendChatMessage()">Отправить</button>
+        </div>
+      </div>
+    </div>
+
     <script>
+      const CALLER_PHONE = "+79990000000";
+      const CHAT_SESSION_ID =
+        (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "demo-" + Date.now();
+
       function startChat() {
-        alert("Чат с МТС AI-Agent будет открыт. Это демонстрационная версия.");
+        document.getElementById("chatModal").classList.add("open");
+        const keyInput = document.getElementById("apiKeyInput");
+        keyInput.value = sessionStorage.getItem("mts_api_key") || "";
+        if (!document.getElementById("chatMsgs").childElementCount) {
+          addChatMsg("agent", "Здравствуйте! Чем могу помочь?");
+        }
+        document.getElementById("chatInput").focus();
+      }
+
+      function closeChat() {
+        document.getElementById("chatModal").classList.remove("open");
+      }
+
+      function addChatMsg(role, text) {
+        const el = document.createElement("div");
+        el.className = "chat-msg " + role;
+        el.textContent = text;
+        const msgs = document.getElementById("chatMsgs");
+        msgs.appendChild(el);
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+
+      async function sendChatMessage() {
+        const input = document.getElementById("chatInput");
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = "";
+
+        const apiKey = document.getElementById("apiKeyInput").value.trim();
+        sessionStorage.setItem("mts_api_key", apiKey);
+
+        addChatMsg("user", text);
+
+        let response;
+        try {
+          response = await fetch("/api/hermes/dialog", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey,
+            },
+            body: JSON.stringify({
+              session_id: CHAT_SESSION_ID,
+              caller_phone: CALLER_PHONE,
+              user_message: text,
+            }),
+          });
+        } catch (e) {
+          addChatMsg("system", "Агент временно недоступен. Проверьте подключение к серверу.");
+          return;
+        }
+
+        if (response.status === 401) {
+          addChatMsg("system", "Неверный API-ключ.");
+          return;
+        }
+        if (!response.ok) {
+          addChatMsg("system", "Агент временно недоступен.");
+          return;
+        }
+
+        const data = await response.json();
+        sessionStorage.setItem("mts_last_session_id", CHAT_SESSION_ID);
+        addChatMsg("agent", data.agent_response || "");
+        if (data.transfer) {
+          addChatMsg("system", "Переводим на отдел: " + (data.transfer.department || "специалист"));
+        }
       }
 
       function openSocial(platform) {

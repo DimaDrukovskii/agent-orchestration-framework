@@ -6,7 +6,7 @@
 import os
 import glob
 from typing import Dict, Any
-from src.utils import logger
+from src.utils import logger, mask_phone
 
 KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "../../data/knowledge")
 
@@ -102,7 +102,7 @@ def check_account_status(phone: str) -> Dict[str, Any]:
     Проверка счёта абонента.
     MVP: заглушка. Подключить реальный биллинг МТС, когда дадут доступ/API.
     """
-    logger.info(f"check_account_status: {phone}")
+    logger.info(f"check_account_status: {mask_phone(phone)}")
     return {
         "phone": phone,
         "balance": "245.50 руб",

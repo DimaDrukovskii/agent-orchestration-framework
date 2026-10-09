@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     # для прода и для "своего" ключа тестов переопределить AGENT_API_KEY в .env.
     agent_api_key: str = "test-local-key"
 
-    # Telegram — уведомления и перевод в чат (docs/TRACK1_PLAN.md).
-    # Пусто = функция выключена, агент работает и без неё.
+    # Telegram — уведомления и перевод в чат (docs/TRACK1_PLAN.md), см.
+    # src/services/telegram.py. Пусто = функция выключена, агент работает и без неё.
     telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     # Голос (TTS) — структура под "проводочки", см. src/services/tts.py.
     # tts_provider="none" = агент работает текстом, как сейчас, озвучка выключена.

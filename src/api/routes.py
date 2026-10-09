@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from src.agent.orchestrator import CallOrchestrator
-from src.utils import logger
+from src.utils import logger, mask_phone
 
 router = APIRouter()
 orchestrator = CallOrchestrator()
@@ -45,8 +45,7 @@ async def dialog(request: DialogRequest):
     Ответ: агент говорит что-то + определяет action
     """
     try:
-        logger.info(f"Dialog: {request.session_id} from {request.caller_phone}")
-        logger.info(f"User: {request.user_message}")
+        logger.info(f"Dialog: {request.session_id} from {mask_phone(request.caller_phone)}")
         
         # Получить ответ от агента
         agent_response, action_result, messages = await orchestrator.dialog(
