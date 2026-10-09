@@ -5,11 +5,11 @@ class Settings(BaseSettings):
     # Claude & OpenAI
     anthropic_api_key: str
     openai_api_key: str
-    
+
     # Supabase
     supabase_url: str
     supabase_key: str
-    
+
     # Redis
     redis_url: str = "redis://localhost:6379"
 
@@ -18,12 +18,16 @@ class Settings(BaseSettings):
     # для прода и для "своего" ключа тестов переопределить AGENT_API_KEY в .env.
     agent_api_key: str = "test-local-key"
 
+    # Telegram — уведомления и перевод в чат (docs/TRACK1_PLAN.md).
+    # Пусто = функция выключена, агент работает и без неё.
+    telegram_bot_token: str = ""
+
     # Server
     max_call_duration_seconds: int = 600
     agent_timeout_seconds: int = 30
     hermes_session_ttl_seconds: int = 1800  # 30 минут, как в docs/ARCHITECTURE.md
     log_level: str = "INFO"
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = False
