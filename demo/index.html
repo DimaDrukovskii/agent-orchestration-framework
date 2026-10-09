@@ -449,6 +449,125 @@
         font-weight: 600;
       }
 
+      /* Call widget (ElevenLabs-style voice orb), additive */
+      .call-fab {
+        position: fixed;
+        right: 94px;
+        bottom: 24px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: #222;
+        color: #fff;
+        border: none;
+        font-size: 22px;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        z-index: 999998;
+      }
+
+      .call-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(10, 10, 10, 0.75);
+        z-index: 1000000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .call-overlay.open {
+        display: flex;
+      }
+
+      .call-panel {
+        background: #17171a;
+        color: #fff;
+        width: 360px;
+        max-width: calc(100vw - 32px);
+        border-radius: 20px;
+        padding: 32px 24px;
+        text-align: center;
+      }
+
+      .orb {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 20px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #ff6b63, #e30611);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+
+      .orb.listening {
+        animation: orb-pulse 1.4s ease-in-out infinite;
+      }
+
+      .orb.thinking {
+        animation: orb-spin 1.2s linear infinite;
+      }
+
+      .orb.speaking {
+        animation: orb-pulse 0.6s ease-in-out infinite;
+      }
+
+      @keyframes orb-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(227, 6, 17, 0.4); }
+        50% { transform: scale(1.08); box-shadow: 0 0 0 16px rgba(227, 6, 17, 0); }
+      }
+
+      @keyframes orb-spin {
+        0% { filter: hue-rotate(0deg); }
+        100% { filter: hue-rotate(360deg); }
+      }
+
+      .call-status { font-size: 14px; color: #aaa; margin-bottom: 6px; }
+      .call-caption { font-size: 15px; min-height: 44px; margin-bottom: 20px; }
+
+      .call-controls { display: flex; gap: 12px; justify-content: center; }
+
+      .call-controls button {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .call-end { background: #e30611; color: #fff; }
+      .call-keyrow { margin-bottom: 14px; }
+      .call-keyrow input {
+        width: 100%;
+        border: 1px solid #333;
+        background: #0e0e10;
+        color: #fff;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .call-fallback {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .call-fallback input {
+        flex: 1;
+        border-radius: 999px;
+        border: 1px solid #333;
+        background: #0e0e10;
+        color: #fff;
+        padding: 8px 14px;
+        font-size: 14px;
+      }
+
+      .call-fallback button {
+        background: #e30611;
+        color: #fff;
+      }
+
       @media (max-width: 768px) {
         .hero h1 {
           font-size: 32px;
@@ -768,6 +887,31 @@
       </div>
     </div>
 
+    <!-- Call widget (голосовой звонок, Web Speech API) -->
+    <button class="call-fab" onclick="startCall()" aria-label="Позвонить агенту">📞</button>
+    <div class="call-overlay" id="callOverlay">
+      <div class="call-panel">
+        <div class="orb" id="callOrb"></div>
+        <div class="call-status" id="callStatus">Соединяем…</div>
+        <div class="call-caption" id="callCaption"></div>
+        <div class="call-keyrow">
+          <input id="callApiKeyInput" type="text" placeholder="API-ключ (X-API-Key)" />
+        </div>
+        <div class="call-controls">
+          <button class="call-end" onclick="endCall()">Завершить звонок</button>
+        </div>
+        <div class="call-fallback" id="callFallback" style="display: none">
+          <input
+            id="callFallbackInput"
+            type="text"
+            placeholder="Голос не распознаётся — напишите сюда…"
+            onkeydown="if(event.key==='Enter') sendCallFallbackText()"
+          />
+          <button onclick="sendCallFallbackText()">→</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const CALLER_PHONE = "+79990000000";
       const CHAT_SESSION_ID =
@@ -841,6 +985,147 @@
         if (data.transfer) {
           addChatMsg("system", "Переводим на отдел: " + (data.transfer.department || "специалист"));
         }
+      }
+
+      // --- Call widget (ElevenLabs-style voice orb, Web Speech API) ---
+      let callRecognition = null;
+      let callActive = false;
+      const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      function setOrbState(state) {
+        const orb = document.getElementById("callOrb");
+        orb.className = "orb " + state;
+      }
+
+      function setCallCaption(text) {
+        document.getElementById("callCaption").textContent = text;
+      }
+
+      function speak(text, onEnd) {
+        if (!window.speechSynthesis) {
+          onEnd && onEnd();
+          return;
+        }
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = "ru-RU";
+        const ruVoice = speechSynthesis.getVoices().find((v) => v.lang.startsWith("ru"));
+        if (ruVoice) utter.voice = ruVoice;
+        utter.onend = onEnd || null;
+        setOrbState("speaking");
+        document.getElementById("callStatus").textContent = "Оператор говорит…";
+        speechSynthesis.speak(utter);
+      }
+
+      async function sendCallTurn(text) {
+        setCallCaption("Вы: " + text);
+        setOrbState("thinking");
+        document.getElementById("callStatus").textContent = "Обрабатываю…";
+
+        const apiKey = document.getElementById("callApiKeyInput").value.trim();
+        sessionStorage.setItem("mts_api_key", apiKey);
+
+        let response;
+        try {
+          response = await fetch("/api/hermes/dialog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+            body: JSON.stringify({
+              session_id: CHAT_SESSION_ID,
+              caller_phone: CALLER_PHONE,
+              user_message: text,
+            }),
+          });
+        } catch (e) {
+          setCallCaption("Агент временно недоступен.");
+          speak("Извините, связь прервалась.", () => stopListening());
+          return;
+        }
+
+        if (!response.ok) {
+          const msg = response.status === 401 ? "Неверный API-ключ." : "Агент временно недоступен.";
+          setCallCaption(msg);
+          speak(msg.replace("API-ключ", "ключ доступа"), () => stopListening());
+          return;
+        }
+
+        const data = await response.json();
+        sessionStorage.setItem("mts_last_session_id", CHAT_SESSION_ID);
+        setCallCaption(data.agent_response || "");
+        speak(data.agent_response || "", () => {
+          if (data.transfer) {
+            document.getElementById("callStatus").textContent =
+              "Переводим на отдел: " + (data.transfer.department || "специалист");
+          } else if (callActive) {
+            startListening();
+          }
+        });
+      }
+
+      function startListening() {
+        if (!SpeechRecognitionImpl || !callActive) return;
+        callRecognition = new SpeechRecognitionImpl();
+        callRecognition.lang = "ru-RU";
+        callRecognition.interimResults = false;
+        callRecognition.maxAlternatives = 1;
+
+        callRecognition.onresult = (event) => {
+          const text = event.results[0][0].transcript;
+          sendCallTurn(text);
+        };
+        callRecognition.onerror = () => {
+          if (callActive) document.getElementById("callFallback").style.display = "flex";
+        };
+        callRecognition.onend = () => {
+          if (callActive) setOrbState("listening");
+        };
+
+        setOrbState("listening");
+        document.getElementById("callStatus").textContent = "Слушаю…";
+        try {
+          callRecognition.start();
+        } catch (e) {
+          document.getElementById("callFallback").style.display = "flex";
+        }
+      }
+
+      function stopListening() {
+        if (callRecognition) {
+          callRecognition.onend = null;
+          callRecognition.stop();
+        }
+      }
+
+      function sendCallFallbackText() {
+        const input = document.getElementById("callFallbackInput");
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = "";
+        sendCallTurn(text);
+      }
+
+      function startCall() {
+        callActive = true;
+        document.getElementById("callOverlay").classList.add("open");
+        document.getElementById("callApiKeyInput").value = sessionStorage.getItem("mts_api_key") || "";
+        document.getElementById("callFallback").style.display = SpeechRecognitionImpl ? "none" : "flex";
+        setCallCaption("");
+        setOrbState("thinking");
+        document.getElementById("callStatus").textContent = "Соединяем…";
+
+        setTimeout(() => {
+          if (!callActive) return;
+          document.getElementById("callStatus").textContent = "На линии";
+          speak("Здравствуйте! Чем могу помочь?", () => {
+            if (callActive) startListening();
+          });
+        }, 900);
+      }
+
+      function endCall() {
+        callActive = false;
+        stopListening();
+        if (window.speechSynthesis) speechSynthesis.cancel();
+        document.getElementById("callOverlay").classList.remove("open");
       }
 
       function openSocial(platform) {
