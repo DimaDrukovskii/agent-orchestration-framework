@@ -2,9 +2,20 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Claude & OpenAI
-    anthropic_api_key: str
+    # LLM-провайдер для Hermes: "anthropic" (прямой Claude API) или
+    # "polza" (OpenAI-совместимый шлюз polza.ai — для РФ/СНГ-биллинга без
+    # прямого доступа к Anthropic). Переключает src/agent/hermes_agent.py.
+    llm_provider: str = "anthropic"
+
+    # Claude (provider="anthropic")
+    anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-5-sonnet-20241022"  # проверить доступность для своего ключа
+
+    # polza.ai (provider="polza") — https://polza.ai/dashboard/api-keys
+    polza_api_key: str = ""
+    polza_base_url: str = "https://polza.ai/api/v1"
+    polza_model: str = "anthropic/claude-sonnet-4"
+
     openai_api_key: str = ""  # нужен только legacy-пути с Whisper (src/services/audio.py)
 
     # Хранилище. По умолчанию — один SQLite-файл, без Redis и Supabase:

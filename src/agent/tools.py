@@ -131,8 +131,23 @@ TOOL_HANDLERS = {
 
 
 def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
-    """Выполнить tool по имени с входными данными от Claude."""
+    """Выполнить tool по имени с входными данными от модели."""
     handler = TOOL_HANDLERS.get(tool_name)
     if not handler:
         return f"Неизвестный инструмент: {tool_name}"
     return handler(tool_input)
+
+
+# Та же схема в формате OpenAI Chat Completions tools (для polza.ai и
+# аналогичных OpenAI-совместимых шлюзов) — src/agent/hermes_agent.py._run_openai.
+TOOLS_SCHEMA_OPENAI = [
+    {
+        "type": "function",
+        "function": {
+            "name": t["name"],
+            "description": t["description"],
+            "parameters": t["input_schema"],
+        },
+    }
+    for t in TOOLS_SCHEMA
+]
