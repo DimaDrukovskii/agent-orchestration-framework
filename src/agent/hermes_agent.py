@@ -46,17 +46,26 @@ TURN_CAP_REPLY = (
     "он разберёт всё подробно. Соединяю?"
 )
 KB_BLOCK = "\n\n[СПРАВКА ИЗ БАЗЫ ЗНАНИЙ — отвечай по ней, ничего не выдумывай]\n{snippet}"
+NOTES_BLOCK = "\n\n[ЗАМЕТКИ ОБ ЭТОМ ЗВОНКЕ — что абонент уже сообщил и что обсуждали раньше; опирайся на них, не переспрашивай]\n{notes}"
+NOTES_MAX_CHARS = 900
+NOTES_PROMPT = (
+    "Ты ведёшь заметки о телефонном звонке в поддержку, чтобы агент помнил разговор целиком. Обнови заметки: "
+    "сохрани ВСЕ факты об абоненте (имя, семья, компания, числа, даты, места, номера, пожелания) и ход разговора "
+    "(о чём спрашивал, что агент ответил или пообещал). Ничего не выдумывай. Пиши коротко, через «;», не длиннее "
+    f"{NOTES_MAX_CHARS} символов. Верни только текст заметок."
+)
 
 
-def with_kb_context(messages: List[Dict[str, Any]], snippet: str) -> List[Dict[str, Any]]:
-    """Копия сообщений, где к последней реплике абонента добавлена справка. Исходный список не меняется."""
-    if not snippet:
+def with_kb_context(messages: List[Dict[str, Any]], snippet: str, notes: str = "") -> List[Dict[str, Any]]:
+    """Копия сообщений, где к последней реплике абонента добавлены заметки о звонке и справка. Исходный список не меняется."""
+    if not snippet and not notes:
         return list(messages)
+    extra = (NOTES_BLOCK.format(notes=notes) if notes else "") + (KB_BLOCK.format(snippet=snippet) if snippet else "")
     result = list(messages)
     for idx in range(len(result) - 1, -1, -1):
         msg = result[idx]
         if msg.get("role") == "user" and isinstance(msg.get("content"), str):
-            result[idx] = {**msg, "content": msg["content"] + KB_BLOCK.format(snippet=snippet)}
+            result[idx] = {**msg, "content": msg["content"] + extra}
             break
     return result
 
@@ -200,7 +209,8 @@ class HermesAgent:
     async def run(
         self,
         messages: List[Dict[str, Any]],
-        caller_phone: str
+        caller_phone: str,
+        notes: str = "",
     ) -> Dict[str, Any]:
         """
         Полный ReAct-цикл: модель думает → при необходимости вызывает tool →
@@ -214,7 +224,7 @@ class HermesAgent:
             }
         """
         if self.provider in OPENAI_COMPAT_PROVIDERS:
-            return await self._run_openai(messages, caller_phone)
+            return await self._run_openai(messages, caller_phone, notes)
         return await self._run_anthropic(messages, caller_phone)
 
     # ---- Anthropic (Claude напрямую) ----
@@ -294,6 +304,7 @@ class HermesAgent:
         self,
         messages: List[Dict[str, Any]],
         caller_phone: str,
+        notes: str = "",
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Тот же цикл «модель, инструмент, модель», но ответ идёт потоком событий:
@@ -343,7 +354,7 @@ class HermesAgent:
                 "temperature": settings.llm_temperature,
                 "stream": True,
                 "messages": [self.system_message()]
-                + with_kb_context(trim_history(working, settings.llm_max_history_messages), snippet),
+                + with_kb_context(trim_history(working, settings.llm_max_history_messages), snippet, notes),
             }
             if self.provider != "hermes_agent" and not state["pending_transfer"]:
                 request["tools"] = tools  # после перевода инструменты не нужны: модель только прощается
@@ -416,7 +427,8 @@ class HermesAgent:
     async def _run_openai(
         self,
         messages: List[Dict[str, Any]],
-        caller_phone: str
+        caller_phone: str,
+        notes: str = "",
     ) -> Dict[str, Any]:
         """
         Тот же ReAct-цикл, но под Chat Completions API: схема тулов —
@@ -456,7 +468,7 @@ class HermesAgent:
                 "max_tokens": settings.llm_max_tokens,
                 "temperature": settings.llm_temperature,
                 "messages": [self.system_message()]
-                + with_kb_context(trim_history(working_messages, settings.llm_max_history_messages), snippet),
+                + with_kb_context(trim_history(working_messages, settings.llm_max_history_messages), snippet, notes),
             }
             if self.provider != "hermes_agent":
                 request["tools"] = tools
@@ -519,6 +531,31 @@ class HermesAgent:
             "chat": chat_messages,
             "links": links,
         }
+
+    async def summarize_notes(self, old_notes: str, dropped: List[Dict[str, Any]]) -> str:
+        """Дописать заметки о звонке репликами, которые выпали из окна истории. Без обращения к модели, если дописывать нечего."""
+        lines = []
+        for m in dropped:
+            if isinstance(m.get("content"), str) and m.get("role") in ("user", "assistant") and not m.get("tool_calls"):
+                who = "Абонент" if m["role"] == "user" else "Агент"
+                lines.append(f"{who}: {m['content'].split(' [СПРАВКА')[0].split(' [ЗАМЕТКИ')[0]}")
+        if not lines:
+            return old_notes
+        user_text = f"Текущие заметки: {old_notes or '(пусто)'}\n\nНовые реплики:\n" + "\n".join(lines)
+        if self.provider in OPENAI_COMPAT_PROVIDERS:
+            resp = await self.client.chat.completions.create(
+                model=self.model, max_tokens=350, temperature=0,
+                messages=[{"role": "system", "content": NOTES_PROMPT}, {"role": "user", "content": user_text}],
+                **self._extra_body(),
+            )
+            text = resp.choices[0].message.content or ""
+        else:
+            resp = await self.client.messages.create(
+                model=self.model, max_tokens=350, temperature=0, system=NOTES_PROMPT,
+                messages=[{"role": "user", "content": user_text}],
+            )
+            text = "".join(getattr(b, "text", "") for b in resp.content)
+        return text.strip()[:NOTES_MAX_CHARS] or old_notes
 
     async def run_streaming(
         self,

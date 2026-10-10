@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     llm_kb_preretrieval: bool = True
     # Предохранитель: после стольких реплик абонента в сессии к модели не
     # обращаемся, а предлагаем оператора (защита от зацикленных тестов и скриптов).
-    llm_max_turns: int = 20
+    llm_max_turns: int = 60
     # Скрытые «рассуждения» моделей вроде Claude Haiku 5.5 занимают токены max_tokens
     # (216 из 300 в замере) и обрывают ответ. "none" — отключить; "" — не передавать.
     llm_reasoning_effort: str = "none"
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""  # подпись вебхука и токен потока; без него звонки не принимаются
     twilio_validate_signature: bool = True  # False только для локальной отладки без Twilio
     telephony_max_concurrent_calls: int = 100  # больше одновременных звонков не принимаем
-    telephony_max_call_seconds: int = 600  # потолок длины звонка (защита бюджета)
+    telephony_max_call_seconds: int = 1200  # потолок длины звонка (защита бюджета)
     telephony_silence_end_ms: int = 700  # пауза, после которой реплика абонента считается законченной
     telephony_model_profile: str = "default"  # «мозг» звонка: default | local | hermes_agent
     telephony_filler_after_ms: int = 1200  # агент молчит дольше: сам говорит «угу, секунду» (fillers в telephony.json)
@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     # stability ниже = эмоциональнее и живее. Голос — TTS_VOICE_ID выше.
     tts_model: str = ""
     tts_stability: float = 0.45
+    tts_stress_marks: bool = False  # знаки ударения в тексте озвучки (src/services/speech_text.py STRESS); включать после прослушивания
     tts_similarity: float = 0.8
 
     # Распознавание речи (STT) через Polza, тот же POLZA_API_KEY. Тарификация по

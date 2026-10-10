@@ -24,6 +24,7 @@ from collections import OrderedDict
 from typing import Any, Dict, Optional, Tuple
 
 from src.config import settings
+from src.services.speech_text import prepare_for_speech
 from src.services.analytics import analytics
 from src.utils import logger
 
@@ -85,6 +86,7 @@ class TTSService:
         """Вернуть аудио (mp3) для текста, либо None если озвучка выключена."""
         if self.provider == "none":
             return None
+        text = prepare_for_speech(text, settings.tts_stress_marks)
         key = (self.provider, settings.tts_model, settings.tts_voice_id, text)
         cached = self._cache.get(key)
         if cached is not None:

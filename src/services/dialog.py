@@ -6,6 +6,7 @@ run_turn(): история сессии из кэша -> агент (модел�
 свой формат в вызов run_turn и обратно, логики диалога у них нет.
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from src.agent.hermes_agent import HermesAgent
@@ -92,6 +93,52 @@ async def _save_session(session_id: str, caller_phone: str, messages: List[Dict[
     )
 
 
+# ---- Заметки о звонке: память дольше окна истории ----------------------------------------------------
+# Модель видит последние llm_max_history_messages сообщений. То, что выпало из окна (имя, семья, даты, договорённости),
+# в фоне дописывается дешёвой моделью в короткие заметки, и они подставляются в каждую реплику.
+
+_notes_tasks: Dict[str, "asyncio.Task"] = {}
+NOTES_WAIT_SECONDS = 2.0
+
+
+def _notes_key(session_id: str) -> str:
+    return f"hermes_notes:{session_id}"
+
+
+async def _get_notes(session_id: str) -> Dict[str, Any]:
+    return (await cache.get(_notes_key(session_id))) or {"text": "", "covered": 0}
+
+
+async def update_notes(session_id: str, messages: List[Dict[str, Any]]) -> None:
+    """Заметки охватывают всё, что при следующей реплике выпадет из окна истории. Ошибки не мешают разговору."""
+    try:
+        notes = await _get_notes(session_id)
+        upto = len(messages) - max(settings.llm_max_history_messages - 2, 2)
+        if upto - notes["covered"] < 2:
+            return
+        text = await hermes.summarize_notes(notes["text"], messages[notes["covered"]:upto])
+        await cache.set(_notes_key(session_id), {"text": text, "covered": upto}, ttl=SESSION_TTL)
+    except Exception as e:
+        logger.warning(f"call notes skipped: {type(e).__name__}")
+
+
+def _schedule_notes(session_id: str, messages: List[Dict[str, Any]]) -> None:
+    _notes_tasks[session_id] = asyncio.create_task(update_notes(session_id, messages))
+
+
+async def _notes_for_turn(session_id: str) -> Dict[str, Any]:
+    """Заметки для агента; если они ещё дописываются после прошлой реплики, ждём недолго."""
+    task = _notes_tasks.get(session_id)
+    if task and not task.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(task), NOTES_WAIT_SECONDS)
+        except (asyncio.TimeoutError, Exception):
+            pass
+    if task and task.done():
+        _notes_tasks.pop(session_id, None)
+    return {"notes": (await _get_notes(session_id))["text"]}
+
+
 async def _persist_turn(
     session_id: str,
     caller_phone: str,
@@ -156,10 +203,12 @@ async def run_turn(
     """Один ход диалога. Возвращает {response, transfer, chat, links, persisted}; ошибки провайдера и хранилища не глотает."""
     history = await _get_session(session_id)
     history.append({"role": "user", "content": user_message})
+    extra = {k: v for k, v in (await _notes_for_turn(session_id)).items() if v}
 
-    result = await agent_for(model_profile).run(messages=history, caller_phone=caller_phone)
+    result = await agent_for(model_profile).run(messages=history, caller_phone=caller_phone, **extra)
 
     await _save_session(session_id, caller_phone, result["messages"])
+    _schedule_notes(session_id, result["messages"])
     persisted = await _persist_turn(
         session_id=session_id,
         caller_phone=caller_phone,
@@ -197,12 +246,14 @@ async def run_turn_stream(
     """
     history = await _get_session(session_id)
     history.append({"role": "user", "content": user_message})
-    async for event in agent_for(model_profile).run_stream(history, caller_phone):
+    extra = {k: v for k, v in (await _notes_for_turn(session_id)).items() if v}
+    async for event in agent_for(model_profile).run_stream(history, caller_phone, **extra):
         if event["type"] != "done":
             yield event
             continue
         result = event["result"]
         await _save_session(session_id, caller_phone, result["messages"])
+        _schedule_notes(session_id, result["messages"])
         persisted = await _persist_turn(
             session_id=session_id,
             caller_phone=caller_phone,
