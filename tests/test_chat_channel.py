@@ -137,3 +137,36 @@ def test_session_history_keeps_tool_call_fields():
     assert plain[2]["tool_call_id"] == "c1"
     assert plain[1]["content"] is None
     assert json.dumps(plain)  # сериализуется для Redis
+
+
+def _capture_request(monkeypatch):
+    agent = _agent(monkeypatch, [])
+    captured = {}
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Ок", tool_calls=None), finish_reason="stop")], usage=None)
+
+    monkeypatch.setattr(agent.client.chat.completions, "create", fake_create)
+    return agent, captured
+
+
+def _system_text(captured):
+    content = captured["messages"][0]["content"]
+    return content if isinstance(content, str) else content[0]["text"]
+
+
+def test_chat_is_off_by_default_tool_and_prompt_rule_are_absent(monkeypatch):
+    assert settings.chat_enabled is False
+    agent, captured = _capture_request(monkeypatch)
+    asyncio.run(agent.run([{"role": "user", "content": "пришлите цены в чат"}], "+79990000000"))
+    assert "send_to_chat" not in [t["function"]["name"] for t in captured["tools"]]
+    assert "send_to_chat" not in _system_text(captured)
+
+
+def test_chat_enabled_offers_tool_and_prompt_rule(monkeypatch):
+    monkeypatch.setattr(settings, "chat_enabled", True)
+    agent, captured = _capture_request(monkeypatch)
+    asyncio.run(agent.run([{"role": "user", "content": "пришлите цены в чат"}], "+79990000000"))
+    assert "send_to_chat" in [t["function"]["name"] for t in captured["tools"]]
+    assert "send_to_chat" in _system_text(captured)

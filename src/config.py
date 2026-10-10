@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # src/services/telegram.py. Пусто = функция выключена, агент работает и без неё.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Канал «чат» (агент отправляет подробности текстом, tool send_to_chat) по умолчанию выключен:
+    # голос и перевод на человека. Telegram получает только уведомление о переводе на человека.
+    chat_enabled: bool = False
 
     # Голос (TTS) — структура под "проводочки", см. src/services/tts.py.
     # tts_provider="none" = агент работает текстом, как сейчас, озвучка выключена.

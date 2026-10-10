@@ -14,7 +14,7 @@ import json
 from typing import List, Dict, Any, AsyncGenerator, Optional
 from src.config import settings
 from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context
-from src.agent.hermes_prompts import HERMES_SYSTEM_PROMPT
+from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
 # провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
@@ -123,18 +123,19 @@ class HermesAgent:
 
     def system_message(self) -> Dict[str, Any]:
         """Системный промпт; для Claude на Polza помечается к кэшированию (read = 0.1x цены)."""
+        prompt = HERMES_SYSTEM_PROMPT + (HERMES_CHAT_RULE if settings.chat_enabled else "")
         cacheable = (
             settings.llm_prompt_cache
             and self.provider == "polza"
             and self.model.startswith("anthropic/")
         )
         if not cacheable:
-            return {"role": "system", "content": HERMES_SYSTEM_PROMPT}
+            return {"role": "system", "content": prompt}
         return {
             "role": "system",
             "content": [{
                 "type": "text",
-                "text": HERMES_SYSTEM_PROMPT,
+                "text": prompt,
                 "cache_control": {"type": "ephemeral", "ttl": "1h"},
             }],
         }
@@ -177,7 +178,7 @@ class HermesAgent:
                 max_tokens=600,
                 temperature=settings.llm_temperature,
                 system=HERMES_SYSTEM_PROMPT,
-                tools=TOOLS_SCHEMA,
+                tools=[t for t in TOOLS_SCHEMA if settings.chat_enabled or t["name"] != "send_to_chat"],
                 messages=working_messages
             )
 
@@ -258,7 +259,8 @@ class HermesAgent:
                               if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
             snippet = kb_context(last_user)
         tools = [t for t in TOOLS_SCHEMA_OPENAI
-                 if not (preretrieval and t["function"]["name"] == "search_knowledge_base")]
+                 if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
+                 and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
 
         for iteration in range(MAX_TOOL_ITERATIONS):
             logger.info(f"Hermes iteration {iteration + 1}, phone={mask_phone(caller_phone)}")
