@@ -32,7 +32,7 @@ src/
   api/               каналы по HTTP: виджет, распознавание, озвучка, аналитика
   telephony/         канал телефона: Twilio (routes), логика звонка (session), кодек G.711, определение конца реплики
   tenant.py          клиент: prompt.md, knowledge/, site_map.json, tenant.json, telephony.json
-demo/                виджет call.html (встраиваемый), лендинг index.html, tools/ (служебные: connect, history, stt_test, analytics)
+demo/                виджет call.html (встраиваемый), лендинг index.html, phone.html (прототип процесса: звонок на номер → результат для владельца), tools/ (служебные: connect, history, stt_test, analytics)
 tenants/
   mts/               данные МТС: prompt.md, knowledge/, site_map.json, tenant.json, telephony.json
   _template/         заготовка для новой компании

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Звонок → результат</title>
+<style>
+  :root {
+    --paper: #ffffff; --ink: #0a0a0a; --mute: #7a7a7a; --hair: #0a0a0a; --soft: #efefef;
+    --signal: #e30611; --ok: #0a7a3d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.4 var(--sans); }
+  button { font: inherit; cursor: pointer; }
+
+  header.top { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; padding: 28px 40px 18px; border-bottom: 3px solid var(--ink); }
+  h1 { margin: 0; font-size: clamp(34px, 5vw, 64px); line-height: .95; letter-spacing: -.035em; font-weight: 800; text-transform: uppercase; }
+  h1 em { font-style: normal; color: var(--signal); }
+  .lede { margin: 10px 0 0; max-width: 640px; color: var(--mute); font-size: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+  .seg { display: inline-flex; border: 1.5px solid var(--ink); }
+  .seg button { background: none; border: 0; padding: 9px 14px; font-size: 13px; font-weight: 600; }
+  .seg button + button { border-left: 1.5px solid var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .go { background: var(--signal); color: #fff; border: 0; padding: 11px 22px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .go:disabled { opacity: .45; cursor: default; }
+
+  nav.steps { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1.5px solid var(--ink); }
+  nav.steps div { padding: 12px 40px 12px 16px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); border-right: 1px solid var(--soft); display: flex; gap: 10px; align-items: baseline; }
+  nav.steps b { font-family: var(--mono); font-size: 12px; }
+  nav.steps div.on { color: var(--ink); box-shadow: inset 0 -4px 0 var(--signal); font-weight: 700; }
+  nav.steps div.done { color: var(--ink); }
+
+  main.stage { display: grid; grid-template-columns: 340px minmax(380px, 1fr) minmax(400px, 1.05fr); min-height: 720px; }
+  section.col { padding: 26px 28px 32px; border-right: 1.5px solid var(--ink); min-width: 0; }
+  section.col:last-child { border-right: 0; }
+  .colhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
+  .colhead h2 { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
+  .colhead span { font-family: var(--mono); font-size: 12px; color: var(--mute); }
+
+  /* телефон */
+  .phone { width: 264px; height: 520px; margin: 4px auto 0; background: #000; border-radius: 42px; padding: 11px; box-shadow: 0 0 0 2px #444 inset, 14px 18px 0 var(--soft); position: relative; }
+  .screen { width: 100%; height: 100%; background: #101010; border-radius: 32px; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 38px 18px 22px; overflow: hidden; position: relative; }
+  .screen::before { content: ""; position: absolute; top: 9px; left: 50%; width: 74px; height: 20px; margin-left: -37px; background: #000; border-radius: 12px; }
+  .pstate { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #9a9a9a; margin-top: 14px; min-height: 16px; }
+  .pnum { font-family: var(--mono); font-size: 18px; white-space: nowrap; margin-top: 8px; letter-spacing: .02em; min-height: 30px; text-align: center; }
+  .pwho { font-size: 13px; color: #bdbdbd; margin-top: 2px; min-height: 18px; }
+  .ptimer { font-family: var(--mono); font-size: 15px; margin-top: 10px; color: #fff; min-height: 20px; }
+  .wave { margin-top: auto; margin-bottom: 20px; height: 90px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 3px; }
+  .wave i { display: block; width: 4px; height: 6px; background: #4a4a4a; border-radius: 2px; transition: height .12s, background .2s; }
+  .wave.agent i { background: var(--signal); } .wave.caller i { background: #fff; }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+  .keys b { height: 40px; border-radius: 20px; background: #232323; display: grid; place-items: center; font-size: 15px; font-weight: 500; }
+  .endbtn { position: absolute; bottom: 20px; left: 50%; width: 52px; height: 52px; margin-left: -26px; border-radius: 50%; background: var(--signal); display: grid; place-items: center; opacity: 0; transition: opacity .3s; }
+  .endbtn::before { content: ""; width: 20px; height: 6px; background: #fff; border-radius: 3px; }
+  .screen.live .endbtn { opacity: 1; } .screen.live .keys { display: none; }
+  .note { font-size: 12px; color: var(--mute); margin: 26px auto 0; max-width: 264px; }
+
+  /* разговор */
+  .log { display: flex; flex-direction: column; gap: 14px; }
+  .turn { display: grid; grid-template-columns: 54px 1fr; gap: 10px; animation: rise .35s ease both; }
+  .turn .t { font-family: var(--mono); font-size: 11px; color: var(--mute); padding-top: 3px; }
+  .turn .who { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 800; }
+  .turn.agent .who { color: var(--signal); }
+  .turn .say { font-size: 19px; line-height: 1.25; letter-spacing: -.01em; margin-top: 2px; }
+  .turn .say .partial { color: #b0b0b0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-family: var(--mono); font-size: 11px; border: 1px solid var(--ink); padding: 3px 7px; animation: rise .3s ease both; }
+  .chip.route { background: var(--ink); color: #fff; } .chip.alert { background: var(--signal); border-color: var(--signal); color: #fff; }
+  .chip.src { border-style: dashed; }
+  .empty { color: var(--mute); font-size: 14px; padding: 40px 0; border-top: 1px solid var(--soft); }
+
+  /* на выходе */
+  .out { display: flex; flex-direction: column; gap: 22px; }
+  .block { border-top: 3px solid var(--ink); padding-top: 8px; opacity: .22; transition: opacity .5s; }
+  .block.show { opacity: 1; }
+  .block h3 { margin: 0 0 10px; display: flex; gap: 10px; align-items: baseline; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  .block h3 b { font-family: var(--mono); color: var(--signal); }
+  dl.card { margin: 0; display: grid; grid-template-columns: 118px 1fr; gap: 0; }
+  dl.card dt, dl.card dd { margin: 0; padding: 7px 0; border-bottom: 1px solid var(--soft); font-size: 14px; }
+  dl.card dt { color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding-top: 9px; }
+  .verdict { display: inline-block; padding: 2px 8px; font-weight: 800; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; background: var(--ok); color: #fff; }
+  .verdict.alert { background: var(--signal); }
+  .tg { background: #17212b; color: #e8eef3; border-radius: 14px; padding: 12px 14px; max-width: 420px; font-size: 14px; line-height: 1.4; }
+  .tg .from { color: #6ab3f3; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .tg .btns { display: flex; gap: 6px; margin-top: 10px; }
+  .tg .btns span { flex: 1; text-align: center; background: #2b5278; border-radius: 8px; padding: 7px; font-size: 13px; }
+  .tg time { display: block; text-align: right; font-size: 11px; color: #7d8b99; margin-top: 4px; }
+  table.j { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.j th { text-align: left; font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; font-weight: 500; padding: 4px 6px 4px 0; }
+  table.j td { padding: 7px 6px 7px 0; border-top: 1px solid var(--soft); font-variant-numeric: tabular-nums; }
+  table.j tr.new td { background: #fff3f3; border-top: 1px solid var(--signal); font-weight: 700; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat .n { font-size: 44px; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+  .stat .n.bump { color: var(--signal); }
+  .stat .l { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; margin-top: 4px; }
+  .faq { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+  .faq span b { font-family: var(--mono); }
+
+  footer.tz { border-top: 3px solid var(--ink); padding: 18px 40px 40px; }
+  footer.tz h2 { margin: 0 0 12px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
+  .tzgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); }
+  .tzi { border-right: 1px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 12px; transition: background .4s; }
+  .tzi.lit { background: #fff3f3; }
+  .tzi .name { font-weight: 700; font-size: 13px; }
+  .tzi .where { font-size: 12px; color: var(--mute); margin: 3px 0 8px; min-height: 32px; }
+  .tag { font-family: var(--mono); font-size: 10.5px; padding: 2px 6px; border: 1px solid var(--ink); text-transform: uppercase; letter-spacing: .04em; }
+  .tag.ok { background: var(--ok); border-color: var(--ok); color: #fff; } .tag.part { background: #fff; } .tag.no { background: var(--signal); border-color: var(--signal); color: #fff; }
+  .proto { font-size: 12px; color: var(--mute); margin-top: 14px; max-width: 920px; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 1180px) { main.stage { grid-template-columns: 1fr; } section.col { border-right: 0; border-bottom: 1.5px solid var(--ink); } header.top { grid-template-columns: 1fr; padding: 22px 18px 14px; } .controls { justify-content: flex-start; } nav.steps div { padding: 10px 8px; font-size: 10px; } footer.tz { padding: 16px 18px 32px; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1>Звонок <em>→</em> результат</h1>
+    <p class="lede">Человек набирает обычный номер телефона, ИИ-ассистент отвечает на вопросы голосом. На выходе владелец получает не запись разговора, а решение: что спросили, чем закончилось, что нужно сделать.</p>
+  </div>
+  <div class="controls">
+    <div class="seg" id="scn" role="group" aria-label="Сценарий">
+      <button data-s="tariff" aria-pressed="true">Вопрос по тарифу</button>
+      <button data-s="transfer" aria-pressed="false">Спор по списанию</button>
+    </div>
+    <div class="seg" id="spd" role="group" aria-label="Скорость">
+      <button data-v="1" aria-pressed="true">1×</button>
+      <button data-v="2" aria-pressed="false">2×</button>
+    </div>
+    <button class="go" id="go">▶ Позвонить</button>
+  </div>
+</header>
+
+<nav class="steps" id="steps" aria-label="Этапы">
+  <div data-i="0"><b>01</b>Звонок</div>
+  <div data-i="1"><b>02</b>Разговор</div>
+  <div data-i="2"><b>03</b>Решение</div>
+  <div data-i="3"><b>04</b>На выходе</div>
+</nav>
+
+<main class="stage">
+  <section class="col" aria-label="Телефон абонента">
+    <div class="colhead"><h2>Абонент</h2><span>обычный телефон</span></div>
+    <div class="phone">
+      <div class="screen" id="screen">
+        <div class="pstate" id="pstate">Готов к вызову</div>
+        <div class="pnum" id="pnum">&nbsp;</div>
+        <div class="pwho" id="pwho">&nbsp;</div>
+        <div class="ptimer" id="ptimer">&nbsp;</div>
+        <div class="wave" id="wave"></div>
+        <div class="keys"><b>1</b><b>2</b><b>3</b><b>4</b><b>5</b><b>6</b><b>7</b><b>8</b><b>9</b><b>*</b><b>0</b><b>#</b></div>
+        <div class="endbtn"></div>
+      </div>
+    </div>
+    <p class="note">Ни приложения, ни регистрации: звонок идёт на номер компании, переадресованный на наш сервер. Номер на экране для примера.</p>
+  </section>
+
+  <section class="col" aria-label="Разговор">
+    <div class="colhead"><h2>Разговор и решения</h2><span id="clock">00:00</span></div>
+    <div class="log" id="log"><div class="empty">Нажмите «Позвонить»: здесь появится разговор слово в слово и то, как агент принимает решения.</div></div>
+  </section>
+
+  <section class="col" aria-label="Результат">
+    <div class="colhead"><h2>На выходе у владельца</h2><span>Иван Петров, владелец</span></div>
+    <div class="out">
+      <div class="block" id="b1"><h3><b>01</b>Карточка звонка</h3>
+        <dl class="card" id="card"></dl></div>
+      <div class="block" id="b2"><h3><b>02</b>Уведомление в Telegram</h3>
+        <div id="tg"></div></div>
+      <div class="block" id="b3"><h3><b>03</b>Журнал звонков</h3>
+        <table class="j"><thead><tr><th>Время</th><th>Номер</th><th>Тема</th><th>Исход</th><th>Длит.</th></tr></thead><tbody id="journal"></tbody></table></div>
+      <div class="block" id="b4"><h3><b>04</b>Сегодня</h3>
+        <div class="stats">
+          <div class="stat"><div class="n" id="s1">14</div><div class="l">звонков</div></div>
+          <div class="stat"><div class="n" id="s2">11</div><div class="l">решено агентом</div></div>
+          <div class="stat"><div class="n" id="s3">3</div><div class="l">передано людям</div></div>
+        </div>
+        <div class="faq" id="faq"></div></div>
+    </div>
+  </section>
+</main>
+
+<footer class="tz">
+  <h2>Требования ТЗ Трека 1: где видно и что в коде</h2>
+  <div class="tzgrid" id="tz"></div>
+  <p class="proto">ПРОТОТИП. Разговор, номера и счётчики на экране заготовлены для показа процесса; ответы агента соответствуют реальной базе знаний (`tenants/mts/knowledge/`). Статусы внизу описывают состояние кода, а не этого экрана. Живого звонка на реальный номер ещё не было.</p>
+</footer>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const COMPANY_NUMBER = "+375 17 000-00-00";
+
+  const SCENARIOS = {
+    tariff: {
+      caller: "+375 29 123-45-67", masked: "+375 29 ***-**-67", clock: "14:32",
+      turns: [
+        { who: "caller", say: "Здравствуйте, подскажите, сколько стоит тариф RED?", stt: "0,9 с",
+          chips: [["Тема: тарифы"], ["база: tariffs_minutes_internet.md", "src"], ["решение: ответить по базе", "route"]],
+          reply: "Тариф RED стоит семьсот пятьдесят рублей в месяц: безлимитный интернет и восемьсот минут." },
+        { who: "caller", say: "А в роуминге по Беларуси это сколько будет?", stt: "1,1 с",
+          chips: [["Тема: роуминг"], ["база: roaming.md", "src"], ["решение: ответить по базе", "route"]],
+          reply: "В роуминге по СНГ звонки по двадцать пять рублей за минуту. Могу рассказать про пакеты для поездок." },
+        { who: "caller", say: "Нет, спасибо, всё понятно.", stt: "0,7 с",
+          chips: [["Вопросы закрыты"], ["решение: завершить разговор", "route"]],
+          reply: "Хорошо, всего доброго!" },
+      ],
+      out: { verdict: ["Решено агентом", false], duration: "00:48", topics: "Тарифы, Роуминг",
+        summary: "Абонент уточнил цену тарифа RED (750 ₽, безлимит, 800 минут) и стоимость звонков в роуминге по СНГ (25 ₽/мин). Оба вопроса закрыты, перевод не нужен.",
+        sources: "tariffs_minutes_internet.md, roaming.md", importance: "обычная", action: "не требуется",
+        tg: { head: "Звонок 14:32 · решено ассистентом", body: "Тема: тариф RED, роуминг по СНГ. Все вопросы закрыты, действий от вас не требуется.", buttons: ["Открыть звонок"] },
+        row: ["14:32", "+375 29 ***-**-67", "Тарифы, роуминг", "решено", "00:48"], delta: [1, 1, 0], faq: { "Тарифы": 7, "Роуминг": 5 } },
+    },
+    transfer: {
+      caller: "+375 33 765-43-21", masked: "+375 33 ***-**-21", clock: "14:41",
+      turns: [
+        { who: "caller", say: "У меня списали триста рублей за какую-то услугу, я ничего не подключал.", stt: "1,3 с",
+          chips: [["Тема: списания"], ["база: mobile_services.md", "src"], ["решение: уточнить детали", "route"]],
+          reply: "Понимаю, это неприятно. Подскажите название услуги и дату списания, если они видны в приложении." },
+        { who: "caller", say: "Вчера, называется какой-то контент-сервис. Соедините меня с оператором.", stt: "1,5 с",
+          chips: [["просьба позвать человека"], ["правило: escalation_rules.md", "src"], ["перевод: биллинг", "alert"]],
+          reply: "Соединяю со специалистом по биллингу, одну секунду. Всё, что вы рассказали, я передам ему." },
+      ],
+      transferAfter: "Перевод: биллинг",
+      out: { verdict: ["Переведён на человека", true], duration: "00:41", topics: "Списания, Биллинг",
+        summary: "Абонент оспаривает списание около 300 ₽ за контент-сервис (вчера), услугу не подключал. Агент не обещал возврат, собрал дату и характер списания и перевёл звонок в биллинг.",
+        sources: "mobile_services.md, escalation_rules.md", importance: "высокая", action: "проверить списание, при необходимости перезвонить",
+        tg: { head: "Требует внимания · звонок 14:41", body: "+375 33 ***-**-21 · спорное списание ≈300 ₽ (вчера, контент-сервис). Передан в биллинг, возврат не обещали.", buttons: ["Открыть звонок", "Перезвонить"] },
+        row: ["14:41", "+375 33 ***-**-21", "Списания", "в биллинг", "00:41"], delta: [1, 0, 1], faq: { "Списания": 3 } },
+    },
+  };
+
+  const JOURNAL_BASE = [
+    ["14:19", "+375 25 ***-**-90", "Тарифы", "решено", "00:37"],
+    ["14:10", "+375 29 ***-**-52", "Подключение eSIM", "решено", "02:14"],
+    ["13:58", "+375 44 ***-**-08", "Пополнение", "решено", "01:05"],
+  ];
+  const FAQ_BASE = { "Тарифы": 6, "Роуминг": 4, "Пополнение": 2, "Списания": 2 };
+
+  const TZ = [
+    ["Подключение ≤ 5 минут", "Переадресация номера на наш вебхук; один API-ключ", "part", "API есть, экрана подключения нет", "setup"],
+    ["Гибкость маршрутизации", "Перевод на отдел, уведомление в Telegram", "part", "перевод и Telegram есть, чат-ветка выключена", "route"],
+    ["Точность расшифровки", "Распознавание речи в каждой реплике", "part", "модель подключена, на записях не измерено", "stt"],
+    ["Контроль и управление", "Журнал звонков, карточка, история диалога", "part", "история есть, редактирования сценариев нет", "journal"],
+    ["Безопасность", "Номер скрыт в журнале, ключ на входе", "ok", "есть", "card"],
+    ["Аналитика", "Счётчики, темы, частые вопросы", "ok", "есть (панель расходов и звонков)", "stats"],
+    ["Экстренный перевод", "«Соедините с оператором» сразу ведёт к человеку", "ok", "есть (правило в промпте)", "emerg"],
+  ];
+  const TAGS = { ok: ["есть", "ok"], part: ["частично", "part"], no: ["нет", "no"] };
+
+  let scenario = "tariff", speed = 1, running = false, runId = 0;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms / speed));
+
+  // --- табло соответствия ТЗ
+  const tzNodes = {};
+  TZ.forEach(([name, where, status, code, key]) => {
+    const box = el("div", "tzi"); box.append(el("div", "name", name), el("div", "where", where));
+    const tag = el("span", "tag " + TAGS[status][1], TAGS[status][0] + " · " + code); box.append(tag);
+    $("tz").append(box); tzNodes[key] = box;
+  });
+  const light = (key) => tzNodes[key] && tzNodes[key].classList.add("lit");
+
+  // --- волна
+  const bars = Array.from({ length: 28 }, () => { const b = el("i"); $("wave").append(b); return b; });
+  let waveTimer = null;
+  function wave(mode) {
+    clearInterval(waveTimer);
+    $("wave").className = "wave" + (mode ? " " + mode : "");
+    if (!mode) { bars.forEach((b) => (b.style.height = "6px")); return; }
+    waveTimer = setInterval(() => bars.forEach((b, i) => (b.style.height = 6 + Math.abs(Math.sin(Date.now() / 140 + i * 0.7)) * Math.random() * 70 + "px")), 110 / speed);
+  }
+
+  function step(i) {
+    document.querySelectorAll("#steps div").forEach((d) => {
+      const n = +d.dataset.i; d.className = n === i ? "on" : n < i ? "done" : "";
+    });
+  }
+
+  function resetUI() {
+    $("log").replaceChildren(el("div", "empty", "Идёт вызов…"));
+    ["b1", "b2", "b3", "b4"].forEach((id) => $(id).classList.remove("show"));
+    Object.values(tzNodes).forEach((n) => n.classList.remove("lit"));
+    $("card").replaceChildren(); $("tg").replaceChildren();
+    $("journal").replaceChildren(...JOURNAL_BASE.map(row));
+    $("s1").textContent = 14; $("s2").textContent = 11; $("s3").textContent = 3;
+    document.querySelectorAll(".stat .n").forEach((n) => n.classList.remove("bump"));
+    renderFaq(FAQ_BASE); $("clock").textContent = "00:00";
+    $("screen").classList.remove("live");
+    $("pstate").textContent = "Готов к вызову"; $("pnum").innerHTML = "&nbsp;"; $("pwho").innerHTML = "&nbsp;"; $("ptimer").innerHTML = "&nbsp;";
+    wave(null); step(-1);
+  }
+
+  function row(cells, isNew) {
+    const tr = el("tr", isNew ? "new" : ""); cells.forEach((c) => tr.append(el("td", "", c))); return tr;
+  }
+  function renderFaq(map) {
+    $("faq").replaceChildren(...Object.entries(map).map(([k, v]) => { const s = el("span", "", k + " "); s.append(el("b", "", String(v))); return s; }));
+  }
+  const mmss = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+
+  // --- проигрывание
+  async function play() {
+    if (running) return;
+    running = true; const id = ++runId; $("go").disabled = true;
+    const alive = () => id === runId;
+    const sc = SCENARIOS[scenario];
+    resetUI();
+
+    // 01 звонок
+    step(0); light("setup");
+    $("pstate").textContent = "Набор номера";
+    for (let i = 1; i <= COMPANY_NUMBER.length; i++) { $("pnum").textContent = COMPANY_NUMBER.slice(0, i); await sleep(70); if (!alive()) return; }
+    $("pstate").textContent = "Вызов…"; await sleep(1500); if (!alive()) return;
+    $("pstate").textContent = "Разговор"; $("pwho").textContent = "Алина · ассистент МТС"; $("screen").classList.add("live");
+    let seconds = 0; const timer = setInterval(() => { seconds++; $("ptimer").textContent = mmss(seconds); $("clock").textContent = mmss(seconds); }, 1000 / speed);
+    const log = $("log"); log.replaceChildren(); step(1);
+
+    const say = async (who, text) => {
+      const turn = el("div", "turn " + who); turn.append(el("div", "t", mmss(seconds)));
+      const body = el("div"); body.append(el("div", "who", who === "agent" ? "Агент" : "Абонент"));
+      const line = el("div", "say"); body.append(line); turn.append(body); log.append(turn);
+      wave(who === "agent" ? "agent" : "caller");
+      if (who === "caller") {
+        const words = text.split(" ");
+        for (let i = 1; i <= words.length; i++) {
+          line.replaceChildren(el("span", "", words.slice(0, i - 1).join(" ") + " "), el("span", "partial", words[i - 1])); await sleep(210); if (!alive()) return null;
+        }
+        line.textContent = text;
+      } else {
+        line.textContent = text; await sleep(Math.max(1400, text.length * 55)); if (!alive()) return null;
+      }
+      wave(null); return body;
+    };
+    const chips = async (body, list) => {
+      const wrap = el("div", "chips"); body.append(wrap);
+      for (const [t, kind] of list) { wrap.append(el("span", "chip " + (kind || ""), t)); await sleep(520); if (!alive()) return; }
+    };
+
+    const g = await say("agent", "Здравствуйте! Это Алина, голосовой ассистент МТС. Чем могу помочь?"); if (!g) return;
+    for (const turn of sc.turns) {
+      const cb = await say("caller", turn.say); if (!cb) return;
+      light("stt"); const sttRow = el("div", "chips"); sttRow.append(el("span", "chip", "распознано за " + turn.stt)); cb.append(sttRow);
+      step(2); await sleep(500);
+      if (turn.chips.some((c) => c[1] === "alert")) light("emerg");
+      light("route"); await chips(cb, turn.chips); if (!alive()) return;
+      step(1); const ab = await say("agent", turn.reply); if (!ab) return;
+    }
+    if (sc.transferAfter) { $("pstate").textContent = sc.transferAfter; wave("agent"); await sleep(1600); if (!alive()) return; wave(null); }
+    clearInterval(timer); $("pstate").textContent = "Вызов завершён"; $("screen").classList.remove("live"); $("ptimer").textContent = mmss(seconds);
+    await sleep(500);
+
+    // 04 на выходе
+    step(3); const o = sc.out;
+    $("b1").classList.add("show"); light("card");
+    const fields = [
+      ["Исход", (() => { const v = el("span", "verdict" + (o.verdict[1] ? " alert" : ""), o.verdict[0]); return v; })()],
+      ["Номер", sc.masked + " (в журнале скрыт)"], ["Длительность", o.duration], ["Темы", o.topics], ["Важность", o.importance],
+      ["Резюме", o.summary], ["Что делать", o.action], ["Источники", o.sources], ["ИИ назван", "да, в приветствии"],
+    ];
+    for (const [k, v] of fields) { $("card").append(el("dt", "", k)); const dd = el("dd"); dd.append(v instanceof Node ? v : document.createTextNode(v)); $("card").append(dd); await sleep(260); if (!alive()) return; }
+    await sleep(300);
+    $("b2").classList.add("show");
+    const tg = el("div", "tg"); tg.append(el("div", "from", "Ассистент · звонки"), el("div", "", o.tg.head + "\n"), el("div", "", o.tg.body));
+    tg.firstChild.nextSibling.style.fontWeight = "700";
+    const btns = el("div", "btns"); o.tg.buttons.forEach((b) => btns.append(el("span", "", b))); tg.append(btns, el("time", "", sc.clock));
+    $("tg").append(tg); await sleep(900); if (!alive()) return;
+    $("b3").classList.add("show"); light("journal");
+    $("journal").prepend(row(o.row, true)); await sleep(900); if (!alive()) return;
+    $("b4").classList.add("show"); light("stats");
+    [["s1", 14, o.delta[0]], ["s2", 11, o.delta[1]], ["s3", 3, o.delta[2]]].forEach(([id, base, d]) => { $(id).textContent = base + d; if (d) $(id).classList.add("bump"); });
+    renderFaq({ ...FAQ_BASE, ...o.faq });
+    running = false; $("go").disabled = false; $("go").textContent = "↻ Ещё раз";
+  }
+
+  $("go").addEventListener("click", () => { running = false; runId++; setTimeout(play, 0); });
+  document.querySelectorAll("#scn button").forEach((b) => b.addEventListener("click", () => {
+    scenario = b.dataset.s; document.querySelectorAll("#scn button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    runId++; running = false; $("go").disabled = false; $("go").textContent = "▶ Позвонить"; resetUI();
+  }));
+  document.querySelectorAll("#spd button").forEach((b) => b.addEventListener("click", () => {
+    speed = +b.dataset.v; document.querySelectorAll("#spd button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  }));
+  resetUI(); $("log").replaceChildren(el("div", "empty", "Нажмите «Позвонить»: здесь появится разговор слово в слово и то, как агент принимает решения."));
+</script>
+</body>
+</html>
