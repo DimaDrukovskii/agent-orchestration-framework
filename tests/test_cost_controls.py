@@ -138,3 +138,41 @@ def test_full_history_is_kept_for_storage_while_model_gets_trimmed(monkeypatch):
 
     assert len(result["messages"]) == len(history) + 1  # всё сохранено + ответ
     assert result["messages"][0] == history[0]
+
+
+def test_polza_request_disables_reasoning_by_default(monkeypatch):
+    monkeypatch.setattr(settings, "llm_reasoning_effort", "none")
+    agent = _polza_agent(monkeypatch, "anthropic/claude-haiku-5.5")
+    captured = {}
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        message = SimpleNamespace(content="ok", tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], usage=None)
+
+    monkeypatch.setattr(agent.client.chat.completions, "create", fake_create)
+    asyncio.run(agent.run([{"role": "user", "content": "привет"}], "+79990000000"))
+    assert captured["extra_body"] == {"reasoning": {"effort": "none"}}
+
+
+def test_reasoning_param_omitted_when_setting_empty_or_not_polza(monkeypatch):
+    captured = {}
+
+    async def fake_create(**kwargs):
+        captured.clear()
+        captured.update(kwargs)
+        message = SimpleNamespace(content="ok", tool_calls=None)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")], usage=None)
+
+    monkeypatch.setattr(settings, "llm_reasoning_effort", "")
+    agent = _polza_agent(monkeypatch, "anthropic/claude-haiku-5.5")
+    monkeypatch.setattr(agent.client.chat.completions, "create", fake_create)
+    asyncio.run(agent.run([{"role": "user", "content": "привет"}], "+79990000000"))
+    assert "extra_body" not in captured
+
+    monkeypatch.setattr(settings, "llm_reasoning_effort", "none")
+    monkeypatch.setattr(settings, "local_base_url", "http://localhost:11434/v1")
+    local = HermesAgent("local")
+    monkeypatch.setattr(local.client.chat.completions, "create", fake_create)
+    asyncio.run(local.run([{"role": "user", "content": "привет"}], "+79990000000"))
+    assert "extra_body" not in captured

@@ -115,6 +115,12 @@ class HermesAgent:
         else:
             raise ValueError(f"Неизвестный LLM_PROVIDER: {self.provider}")
 
+    def _extra_body(self) -> Dict[str, Any]:
+        """Параметры Polza вне стандарта OpenAI: отключаем скрытые рассуждения (только polza)."""
+        if self.provider == "polza" and settings.llm_reasoning_effort:
+            return {"extra_body": {"reasoning": {"effort": settings.llm_reasoning_effort}}}
+        return {}
+
     def system_message(self) -> Dict[str, Any]:
         """Системный промпт; для Claude на Polza помечается к кэшированию (read = 0.1x цены)."""
         cacheable = (
@@ -267,6 +273,7 @@ class HermesAgent:
             # не вызывает — схему ему не отправляем (инструменты МТС: отдельный шаг).
             if self.provider != "hermes_agent":
                 request["tools"] = tools
+            request.update(self._extra_body())
             response = await self.client.chat.completions.create(**request)
             log_usage(response, self.model)
 
@@ -314,6 +321,7 @@ class HermesAgent:
                 + trim_history(working_messages, settings.llm_max_history_messages)
                 + [{"role": "user", "content": CLOSING_PROMPT}]
             ),
+            **self._extra_body(),
         )
         final_text = (closing.choices[0].message.content or "").strip()
         working_messages.append({"role": "assistant", "content": final_text})
