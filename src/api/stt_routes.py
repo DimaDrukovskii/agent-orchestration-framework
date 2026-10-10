@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from src.api.auth import verify_api_key
 from src.config import settings
-from src.services.analytics import analytics, session_var
+from src.services.analytics import session_var
 from src.services.stt import STTNotConfigured, stt_service
 from src.utils import logger
 
@@ -48,9 +48,7 @@ async def transcribe(request: Request, model: str = ""):
         raise _error(400, "model_not_allowed", "Модель не из списка STT_MODELS", False)
     session_var.set(request.headers.get("x-session-id", "")[:128])
     try:
-        result = await stt_service.transcribe(audio, request.headers.get("content-type", ""), chosen)
-        analytics.record("stt", result.get("cost_rub"), model=chosen, units=result.get("duration") or 0)
-        return result
+        return await stt_service.transcribe(audio, request.headers.get("content-type", ""), chosen)
     except STTNotConfigured as e:
         raise _error(503, "stt_not_configured", str(e), False)
     except Exception as e:

@@ -35,6 +35,26 @@ def read_tenant_file(name: str) -> str:
         raise FileNotFoundError(f"Нет файла клиента {path} (TENANT={settings.tenant!r})") from e
 
 
+def load_telephony() -> dict:
+    """tenants/<TENANT>/telephony.json: приветствие и фразы для звонка, номера для перевода на человека."""
+    import json
+
+    defaults = {
+        "greeting": "Здравствуйте! Это голосовой ассистент компании. Чем могу помочь?",
+        "goodbye": "Всего доброго, до свидания!",
+        "idle_prompt": "Вы меня слышите?",
+        "error_prompt": "Извините, сейчас небольшие технические неполадки. Повторите, пожалуйста.",
+        "transfer_prompt": "Соединяю вас со специалистом, одну секунду.",
+        "transfer_unavailable": "Передала ваш вопрос специалисту, он свяжется с вами. Всего доброго!",
+        "transfer_numbers": {},
+    }
+    try:
+        loaded = json.loads(read_tenant_file("telephony.json"))
+    except (FileNotFoundError, ValueError):
+        return defaults
+    return {**defaults, **loaded} if isinstance(loaded, dict) else defaults
+
+
 def load_branding() -> Dict[str, Any]:
     """Подписи виджета из tenant.json поверх значений по умолчанию; битый или пустой файл не ломает виджет."""
     try:

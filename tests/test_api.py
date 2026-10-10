@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from redis.exceptions import ConnectionError as RedisConnectionError
 from src.main import app
-from src.api import hermes_routes
+from src.services import dialog
 
 client = TestClient(app)
 
@@ -25,9 +25,9 @@ def _stub_agent_and_cache(monkeypatch):
     async def fake_set(key, value, ttl=3600):
         return None
 
-    monkeypatch.setattr(hermes_routes.hermes, "run", fake_run)
-    monkeypatch.setattr(hermes_routes.cache, "get", fake_get)
-    monkeypatch.setattr(hermes_routes.cache, "set", fake_set)
+    monkeypatch.setattr(dialog.hermes, "run", fake_run)
+    monkeypatch.setattr(dialog.cache, "get", fake_get)
+    monkeypatch.setattr(dialog.cache, "set", fake_set)
 
 
 def test_health_check():
@@ -47,7 +47,7 @@ def test_hermes_dialog_success(monkeypatch):
     async def fake_persist(**kwargs):
         return True
 
-    monkeypatch.setattr(hermes_routes, "_persist_turn", fake_persist)
+    monkeypatch.setattr(dialog, "_persist_turn", fake_persist)
 
     response = client.post("/api/hermes/dialog", json=PAYLOAD, headers=HEADERS)
 
@@ -66,7 +66,7 @@ def test_hermes_dialog_supabase_down_returns_persisted_false(monkeypatch):
     async def failing_persist(**kwargs):
         return False
 
-    monkeypatch.setattr(hermes_routes, "_persist_turn", failing_persist)
+    monkeypatch.setattr(dialog, "_persist_turn", failing_persist)
 
     response = client.post("/api/hermes/dialog", json=PAYLOAD, headers=HEADERS)
 
@@ -80,7 +80,7 @@ def test_hermes_dialog_redis_down_returns_503(monkeypatch):
     async def broken_get(key):
         raise RedisConnectionError("redis is down")
 
-    monkeypatch.setattr(hermes_routes.cache, "get", broken_get)
+    monkeypatch.setattr(dialog.cache, "get", broken_get)
 
     response = client.post("/api/hermes/dialog", json=PAYLOAD, headers=HEADERS)
 

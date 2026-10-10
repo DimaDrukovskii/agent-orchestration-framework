@@ -31,6 +31,11 @@ services:
       - CACHE_BACKEND=${CACHE_BACKEND:-sqlite}
       - STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite}
       - REDIS_URL=redis://redis:6379
+      - TELEPHONY_ENABLED=${TELEPHONY_ENABLED:-false}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TENANT=${TENANT:-mts}
     depends_on:
       - redis
     volumes:

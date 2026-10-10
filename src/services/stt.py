@@ -14,6 +14,7 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from src.config import settings
+from src.services.analytics import analytics
 from src.utils import logger
 
 
@@ -66,12 +67,14 @@ class STTService:
             logger.error(f"STT (polza, {model}) error: {str(e)}")
             raise
         usage = body.get("usage") or {}
-        return {
+        result = {
             "text": (body.get("text") or "").strip(),
             "model": model,
             "duration": body.get("duration") or usage.get("durationSeconds"),
             "cost_rub": usage.get("cost_rub"),
         }
+        analytics.record("stt", result["cost_rub"], model=model, units=result["duration"] or 0)
+        return result
 
 
 def _words(text: str) -> list:

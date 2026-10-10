@@ -6,28 +6,12 @@ from typing import List, Literal, Optional, Dict, Any
 from anthropic import APITimeoutError
 from openai import APIStatusError, APITimeoutError as OpenAITimeoutError
 from redis.exceptions import RedisError
-from src.agent.hermes_agent import HermesAgent
+from src.services import dialog
 from src.api.auth import verify_api_key
-from src.config import settings
 from src.services.analytics import session_var
-from src.services.cache import CacheService
-from src.utils import logger, mask_phone
+from src.utils import logger
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
-hermes = HermesAgent()
-_agents: Dict[str, HermesAgent] = {}  # профили кроме дефолтного, создаются по требованию
-
-
-def agent_for(model_profile: Optional[str]) -> HermesAgent:
-    """"default"/None — LLM_PROVIDER, "local" — локальный сервер."""
-    if model_profile in (None, "default"):
-        return hermes
-    if model_profile not in _agents:
-        _agents[model_profile] = HermesAgent(model_profile)
-    return _agents[model_profile]
-cache = CacheService()
-
-SESSION_TTL = settings.hermes_session_ttl_seconds
 
 
 class HermesDialogRequest(BaseModel):
@@ -53,159 +37,28 @@ def _unavailable(code: str, message: str, retryable: bool = True) -> HTTPExcepti
     )
 
 
-def _session_key(session_id: str) -> str:
-    return f"hermes_session:{session_id}"
-
-
-
-
-def _to_plain(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Привести историю к JSON-сериализуемому виду перед записью в Redis.
-
-    HermesAgent.run() добавляет в историю response.content прямо как
-    объекты Anthropic SDK (TextBlock/ToolUseBlock) — это ок для памяти
-    процесса, но не для json.dumps в CacheService. Переводим в plain dict,
-    Anthropic messages API их принимает обратно так же, как объекты.
-    """
-    plain: List[Dict[str, Any]] = []
-    for msg in messages:
-        # остальные поля (tool_calls, tool_call_id) нужны провайдеру на следующей реплике
-        item = {key: value for key, value in msg.items() if key != "content"}
-        content = msg.get("content")
-        if isinstance(content, list):
-            content = [block.model_dump() if hasattr(block, "model_dump") else block for block in content]
-        item["content"] = content
-        plain.append(item)
-    return plain
-
-
-def _extract_transcript(messages: List[Dict[str, Any]]) -> str:
-    """Читаемый транскрипт для БД — только текстовые реплики, без tool-шагов."""
-    lines = []
-    for msg in messages:
-        content = msg["content"]
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            text = "".join(
-                block.get("text", "") if isinstance(block, dict) else getattr(block, "text", "")
-                for block in content
-                if (isinstance(block, dict) and block.get("type") == "text")
-                or getattr(block, "type", None) == "text"
-            )
-        else:
-            text = ""
-        if text.strip():
-            lines.append(f"{msg['role'].upper()}: {text.strip()}")
-    return "\n".join(lines)
-
-
-async def _get_session(session_id: str) -> List[Dict[str, Any]]:
-    cached = await cache.get(_session_key(session_id))
-    if cached:
-        return cached.get("messages", [])
-    return []
-
-
-async def _save_session(session_id: str, caller_phone: str, messages: List[Dict[str, Any]]) -> None:
-    await cache.set(
-        _session_key(session_id),
-        {"caller_phone": caller_phone, "messages": _to_plain(messages)},
-        ttl=SESSION_TTL
-    )
-
-
-async def _persist_turn(
-    session_id: str,
-    caller_phone: str,
-    messages: List[Dict[str, Any]],
-    agent_response: str,
-    pending_transfer: Optional[Dict[str, Any]]
-) -> bool:
-    """
-    Записать текущее состояние разговора в Supabase (та же таблица `calls`,
-    что уже использует CallOrchestrator — не вводим новую схему).
-
-    Ошибка персиста не роняет ответ абоненту, но возвращается как persisted=False,
-    чтобы вызывающая сторона видела, что история не сохранилась.
-    """
-    persisted = True
-    try:
-        from src.services.storage import StorageService
-        storage = StorageService()
-        await storage.upsert_call(
-            call_id=session_id,
-            caller_phone=caller_phone,
-            transcript=_extract_transcript(messages),
-            agent_response=agent_response,
-            action="transfer" if pending_transfer else "in_progress"
-        )
-    except Exception as e:
-        persisted = False
-        logger.error(f"[{session_id}] Hermes persist error: {str(e)}")
-
-    if pending_transfer:
-        try:
-            from src.services.telegram import send_message
-            await send_message(
-                settings.telegram_chat_id,
-                f"Звонок от {mask_phone(caller_phone)} переведён на "
-                f"{pending_transfer.get('department', '?')}: {pending_transfer.get('reason', '')}",
-            )
-        except Exception as e:
-            logger.error(f"[{session_id}] Telegram notify error: {str(e)}")
-
-    return persisted
-
-
-async def _deliver_chat(session_id: str, messages: List[str]) -> None:
-    """Доставить сообщения чата во внешний канал. Новый канал — ещё одна ветка здесь."""
-    if not messages or not settings.telegram_chat_id:
-        return
-    try:
-        from src.services.telegram import send_message
-        for text in messages:
-            await send_message(settings.telegram_chat_id, text)
-    except Exception as e:
-        logger.error(f"[{session_id}] Chat delivery error: {type(e).__name__}")
-
 
 @router.post("/hermes/dialog", response_model=HermesDialogResponse)
 async def hermes_dialog(request: HermesDialogRequest):
     """
     Диалог с Hermes-агентом (с доступом к tools: база знаний, счёт, перевод).
 
-    Сервер сам хранит историю по session_id в Redis (TTL — settings.hermes_session_ttl_seconds),
-    клиенту не нужно передавать историю. Каждая реплика также пишется в Supabase (calls)
-    для аналитики и аудита.
+    Сервер сам хранит историю по session_id (TTL — settings.hermes_session_ttl_seconds),
+    клиенту не нужно передавать историю. Каждая реплика также пишется в журнал звонков (calls)
+    для аналитики и аудита. Сама логика хода — src/services/dialog.py (run_turn).
     """
     session_var.set(request.session_id)  # расходы этого запроса запишутся на этот разговор
     try:
-        history = await _get_session(request.session_id)
-        history.append({"role": "user", "content": request.user_message})
-
-        result = await agent_for(request.model_profile).run(messages=history, caller_phone=request.caller_phone)
-
-        await _save_session(request.session_id, request.caller_phone, result["messages"])
-        persisted = await _persist_turn(
-            session_id=request.session_id,
-            caller_phone=request.caller_phone,
-            messages=result["messages"],
-            agent_response=result["response"],
-            pending_transfer=result["pending_transfer"]
+        turn = await dialog.run_turn(
+            request.session_id, request.caller_phone, request.user_message, request.model_profile
         )
-
-        chat = result.get("chat", [])
-        await _deliver_chat(request.session_id, chat)
-
         return HermesDialogResponse(
             session_id=request.session_id,
-            agent_response=result["response"],
-            transfer=result["pending_transfer"],
-            chat=chat,
-            links=result.get("links", []),
-            persisted=persisted
+            agent_response=turn["response"],
+            transfer=turn["transfer"],
+            chat=turn["chat"],
+            links=turn["links"],
+            persisted=turn["persisted"],
         )
 
     except (APITimeoutError, OpenAITimeoutError) as e:
@@ -233,18 +86,18 @@ async def hermes_dialog_stream(request: HermesDialogRequest):
     Без tool calls (см. ограничение в HermesAgent.run_streaming).
     """
     try:
-        history = await _get_session(request.session_id)
+        history = await dialog._get_session(request.session_id)
         history.append({"role": "user", "content": request.user_message})
 
         async def token_generator():
             full_response = ""
-            async for chunk in agent_for(request.model_profile).run_streaming(messages=history, caller_phone=request.caller_phone):
+            async for chunk in dialog.agent_for(request.model_profile).run_streaming(messages=history, caller_phone=request.caller_phone):
                 full_response += chunk
                 yield chunk
 
             history.append({"role": "assistant", "content": full_response})
-            await _save_session(request.session_id, request.caller_phone, history)
-            await _persist_turn(
+            await dialog._save_session(request.session_id, request.caller_phone, history)
+            await dialog._persist_turn(
                 session_id=request.session_id,
                 caller_phone=request.caller_phone,
                 messages=history,
@@ -261,7 +114,7 @@ async def hermes_dialog_stream(request: HermesDialogRequest):
 
 @router.get("/hermes/dialog/{session_id}/history")
 async def get_history(session_id: str):
-    messages = await _get_session(session_id)
+    messages = await dialog._get_session(session_id)
     if not messages:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"session_id": session_id, "messages": messages}

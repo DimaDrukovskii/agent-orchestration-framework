@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from src.agent import tools
 from src.agent.hermes_agent import HermesAgent
-from src.api import hermes_routes
+from src.services import dialog
 from src.config import settings
 from src.main import app
 
@@ -81,11 +81,11 @@ def test_dialog_response_includes_chat_and_delivers_it(monkeypatch):
     async def fake_save(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(hermes_routes, "agent_for", lambda profile: FakeAgent())
-    monkeypatch.setattr(hermes_routes, "_persist_turn", fake_persist)
-    monkeypatch.setattr(hermes_routes, "_deliver_chat", fake_deliver)
-    monkeypatch.setattr(hermes_routes, "_get_session", fake_get)
-    monkeypatch.setattr(hermes_routes, "_save_session", fake_save)
+    monkeypatch.setattr(dialog, "agent_for", lambda profile: FakeAgent())
+    monkeypatch.setattr(dialog, "_persist_turn", fake_persist)
+    monkeypatch.setattr(dialog, "_deliver_chat", fake_deliver)
+    monkeypatch.setattr(dialog, "_get_session", fake_get)
+    monkeypatch.setattr(dialog, "_save_session", fake_save)
 
     response = client.post(
         "/api/hermes/dialog",
@@ -109,13 +109,13 @@ def test_provider_403_and_402_map_to_non_retryable_503(monkeypatch):
     async def fake_get(session_id):
         return []
 
-    monkeypatch.setattr(hermes_routes, "_get_session", fake_get)
+    monkeypatch.setattr(dialog, "_get_session", fake_get)
     for status, code in ((403, "model_not_allowed"), (402, "insufficient_balance")):
         class FailingAgent:
             async def run(self, messages, caller_phone, _status=status):
                 raise _status_error(_status)
 
-        monkeypatch.setattr(hermes_routes, "agent_for", lambda profile, _a=FailingAgent(): _a)
+        monkeypatch.setattr(dialog, "agent_for", lambda profile, _a=FailingAgent(): _a)
         response = client.post(
             "/api/hermes/dialog",
             json={"session_id": "s-err", "caller_phone": "+79990000000", "user_message": "привет"},
@@ -132,7 +132,7 @@ def test_session_history_keeps_tool_call_fields():
         {"role": "tool", "tool_call_id": "c1", "content": "{'action': 'chat'}"},
         {"role": "assistant", "content": "Отправила."},
     ]
-    plain = hermes_routes._to_plain(history)
+    plain = dialog._to_plain(history)
     assert plain[1]["tool_calls"][0]["id"] == "c1"
     assert plain[2]["tool_call_id"] == "c1"
     assert plain[1]["content"] is None

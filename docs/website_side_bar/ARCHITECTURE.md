@@ -1,6 +1,11 @@
 # Архитектура
 
-## Поток одной реплики
+## Каналы
+
+Телефон (Twilio): [TELEPHONY.md](TELEPHONY.md). Виджет на сайте: схема ниже. Оба канала вызывают `src/services/dialog.py` (`run_turn`):
+историю, агента, запись звонка и доставку чата делает он, а не канал.
+
+## Поток одной реплики (виджет)
 
 ```
 виджет (demo/call.html)
@@ -23,7 +28,9 @@ POST /api/tts (Polza ElevenLabs) → звук в виджет
 
 | Слой | Файлы | Назначение |
 |---|---|---|
-| API | `src/api/hermes_routes.py` | диалог, потоковая версия, история; ошибки провайдера → 503 с кодами |
+| Диалог | `src/services/dialog.py` | `run_turn`: сессия, агент, запись, доставка чата; общий для телефона и виджета |
+| Телефон | `src/telephony/` | `routes.py` (Twilio), `session.py` (логика звонка), `vad.py`, `audio.py` (G.711), `twilio.py` (подпись, TwiML, перевод) |
+| API | `src/api/hermes_routes.py` | HTTP-канал диалога, потоковая версия, история; ошибки провайдера → 503 с кодами |
 | | `src/api/stt_routes.py`, `tts_routes.py` | распознавание и озвучка |
 | | `src/api/tenant_routes.py`, `llm_routes.py`, `auth.py` | подписи клиента для виджета, доступные модели, `X-API-Key` |
 | Агент | `src/agent/hermes_agent.py` | цикл с инструментами, три провайдера (anthropic, polza, local), контроль расходов |

@@ -60,6 +60,20 @@ class Settings(BaseSettings):
     storage_backend: str = "sqlite"
     sqlite_path: str = "data/hermes.db"  # относительно корня репо
 
+    # Телефония (Twilio Media Streams, src/telephony). Выключена, пока нет TELEPHONY_ENABLED=true.
+    # public_base_url — внешний адрес сервера (https://...): из него строится wss-адрес потока и проверяется
+    # подпись вебхука; он должен совпадать с адресом, указанным в консоли Twilio.
+    telephony_enabled: bool = False
+    public_base_url: str = ""
+    twilio_account_sid: str = ""  # нужны только для перевода звонка на человека (REST)
+    twilio_auth_token: str = ""  # подпись вебхука и токен потока; без него звонки не принимаются
+    twilio_validate_signature: bool = True  # False только для локальной отладки без Twilio
+    telephony_max_concurrent_calls: int = 100  # больше одновременных звонков не принимаем
+    telephony_max_call_seconds: int = 600  # потолок длины звонка (защита бюджета)
+    telephony_silence_end_ms: int = 700  # пауза, после которой реплика абонента считается законченной
+    telephony_idle_prompt_seconds: int = 12  # молчит абонент: «Вы меня слышите?»
+    telephony_idle_hangup_seconds: int = 30  # молчит дальше: прощаемся и кладём трубку
+
     # С чем сравнивать стоимость минуты на панели аналитики (demo/tools/analytics.html).
     # МТС Exolve, голосовая сессия робота: от 0,02 ₽/с = 1,2 ₽/мин (exolve.ru/products/robots, 2026-10).
     benchmark_name: str = "МТС Exolve, голосовой робот"

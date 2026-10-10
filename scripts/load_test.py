@@ -22,7 +22,7 @@ os.environ.setdefault("SQLITE_PATH", os.path.join(tempfile.mkdtemp(prefix="herme
 import httpx  # noqa: E402
 
 from src.agent import tools  # noqa: E402
-from src.api import hermes_routes  # noqa: E402
+from src.services import dialog  # noqa: E402
 from src.config import settings  # noqa: E402
 from src.main import app  # noqa: E402
 
@@ -56,7 +56,7 @@ async def one_call(client, index, latencies, failures):
 
 
 async def main():
-    hermes_routes.agent_for = lambda profile: SimulatedAgent()
+    dialog.agent_for = lambda profile: SimulatedAgent()
     latencies, failures = [], []
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test", timeout=120) as client:

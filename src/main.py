@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +8,7 @@ from src.api import llm_routes
 from src.api import stt_routes
 from src.api import tenant_routes
 from src.api import analytics_routes
+from src.telephony import routes as telephony_routes
 from src.config import non_chat_model, settings
 from src.utils import logger
 
@@ -39,11 +41,18 @@ app.include_router(llm_routes.router, prefix="/api")
 app.include_router(stt_routes.router, prefix="/api")
 app.include_router(tenant_routes.router, prefix="/api")
 app.include_router(analytics_routes.router, prefix="/api")
+app.include_router(telephony_routes.router)  # Twilio: свои адреса /telephony/twilio/*, авторизация по подписи Twilio
 
 # Демо-страницы (виджет, лендинг, служебные в demo/tools) — тот же origin, что и /api,
 # иначе fetch('/api/...') из demo/*.html упирается в CORS/file:// при
 # открытии файла напрямую. html=True отдаёт index.html на /demo/.
 app.mount("/demo", StaticFiles(directory="demo", html=True), name="demo")
+
+@app.on_event("startup")
+async def warm_telephony():
+    if settings.telephony_enabled:
+        asyncio.create_task(telephony_routes.prewarm())
+
 
 @app.get("/health")
 async def health_check():

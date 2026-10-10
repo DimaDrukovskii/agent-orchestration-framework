@@ -11,6 +11,10 @@ anthropic>=0.25.0,<0.26.0
 openai==1.3.0
 python-dotenv==1.0.0
 
+# Телефония (src/telephony): WebSocket-сервер для Twilio Media Streams и декодер mp3 озвучки в G.711.
+websockets>=10.4
+miniaudio>=1.60
+
 # Database & Cache
 supabase==2.0.0
 redis==5.0.1

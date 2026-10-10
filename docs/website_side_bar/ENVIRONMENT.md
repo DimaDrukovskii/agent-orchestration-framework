@@ -34,6 +34,14 @@
 | `STORAGE_BACKEND` | `sqlite` | `sqlite` \| `supabase` (тогда нужны `SUPABASE_URL`, `SUPABASE_KEY`; схема — `docs/website_side_bar/DATABASE_SCHEMA.md`) |
 | `SQLITE_PATH` | `data/hermes.db` | путь к файлу, относительный — от корня репо |
 | `OPENAI_API_KEY` | `""` | не используется, можно не задавать |
+| `TELEPHONY_ENABLED` | `false` | включает приём звонков Twilio ([TELEPHONY.md](TELEPHONY.md)) |
+| `PUBLIC_BASE_URL` | `""` | внешний https-адрес сервера: wss-адрес потока и проверка подписи вебхука |
+| `TWILIO_AUTH_TOKEN` | `""` | подпись вебхука и токен потока; без него звонки не принимаются |
+| `TWILIO_ACCOUNT_SID` | `""` | только для перевода звонка на человека |
+| `TWILIO_VALIDATE_SIGNATURE` | `true` | `false` только для локальной отладки |
+| `TELEPHONY_MAX_CONCURRENT_CALLS` / `TELEPHONY_MAX_CALL_SECONDS` | `100` / `600` | потолки числа звонков и длины звонка |
+| `TELEPHONY_SILENCE_END_MS` | `700` | пауза, после которой реплика абонента считается законченной |
+| `TELEPHONY_IDLE_PROMPT_SECONDS` / `TELEPHONY_IDLE_HANGUP_SECONDS` | `12` / `30` | молчание абонента: переспросить, затем попрощаться |
 | `BENCHMARK_NAME` | `МТС Exolve, голосовой робот` | с чем сравнивается цена минуты на панели аналитики |
 | `BENCHMARK_RUB_PER_MINUTE` | `1.2` | цена минуты у конкурента, ₽ (Exolve: от 0,02 ₽/с, exolve.ru/products/robots) |
 

@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
 
 from src.agent.hermes_agent import HermesAgent
-from src.api import hermes_routes, llm_routes
+from src.api import llm_routes
+from src.services import dialog
 from src.config import settings
 from src.main import app
 
@@ -34,9 +35,9 @@ def _stub_storage(monkeypatch):
     async def fake_persist(**kwargs):
         return True
 
-    monkeypatch.setattr(hermes_routes.cache, "get", fake_get)
-    monkeypatch.setattr(hermes_routes.cache, "set", fake_set)
-    monkeypatch.setattr(hermes_routes, "_persist_turn", fake_persist)
+    monkeypatch.setattr(dialog.cache, "get", fake_get)
+    monkeypatch.setattr(dialog.cache, "set", fake_set)
+    monkeypatch.setattr(dialog, "_persist_turn", fake_persist)
 
 
 def test_local_agent_points_at_local_server(monkeypatch):
@@ -58,19 +59,19 @@ def test_unknown_provider_is_rejected():
 
 def test_agent_for_returns_default_and_cached_local_agent(monkeypatch):
     monkeypatch.setattr(settings, "local_base_url", "http://localhost:11434/v1")
-    monkeypatch.delitem(hermes_routes._agents, "local", raising=False)
-    assert hermes_routes.agent_for(None) is hermes_routes.hermes
-    assert hermes_routes.agent_for("default") is hermes_routes.hermes
-    local = hermes_routes.agent_for("local")
+    monkeypatch.delitem(dialog._agents, "local", raising=False)
+    assert dialog.agent_for(None) is dialog.hermes
+    assert dialog.agent_for("default") is dialog.hermes
+    local = dialog.agent_for("local")
     assert local.provider == "local"
-    assert hermes_routes.agent_for("local") is local
+    assert dialog.agent_for("local") is local
 
 
 def test_dialog_routes_to_local_agent_when_requested(monkeypatch):
     _stub_storage(monkeypatch)
     default_agent, local_agent = FakeAgent("из облака"), FakeAgent("из локальной модели")
-    monkeypatch.setattr(hermes_routes, "hermes", default_agent)
-    monkeypatch.setitem(hermes_routes._agents, "local", local_agent)
+    monkeypatch.setattr(dialog, "hermes", default_agent)
+    monkeypatch.setitem(dialog._agents, "local", local_agent)
 
     local = client.post("/api/hermes/dialog", json={**PAYLOAD, "model_profile": "local"}, headers=HEADERS)
     default = client.post("/api/hermes/dialog", json=PAYLOAD, headers=HEADERS)

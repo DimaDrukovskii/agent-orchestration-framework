@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# g++ нужен, чтобы собрать miniaudio (декодер mp3 для телефонии) там, где нет готового колеса (Linux arm64)
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
+    gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
