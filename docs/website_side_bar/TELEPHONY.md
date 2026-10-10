@@ -73,3 +73,10 @@ TTS_PROVIDER=polza  TTS_VOICE_ID=...        # голос; POLZA_API_KEY, POLZA_M
 
 Логика звонка (`src/telephony/session.py`) не знает про Twilio: ей нужны колбэки отправки звука, `clear`, завершения и перевода (`Pipeline`).
 Новый провайдер это ещё один файл рядом с `src/telephony/routes.py`: принять входящий звук, перевести его в µ-law 8 кГц и собрать `Pipeline`.
+
+## Быстрое подключение
+
+`python3 scripts/setup.py --phone` делает шаги 1–4 выше сам: проверяет SID и токен Twilio, находит номер на аккаунте, поднимает временный
+https-адрес (cloudflared, если установлен; иначе спросит адрес из `ngrok http 8000`), записывает `TELEPHONY_ENABLED`, `PUBLIC_BASE_URL`,
+`TWILIO_*` в `.env`, пересоздаёт приложение и после вашего подтверждения направляет номер на `/telephony/twilio/voice`.
+Номер на аккаунте Twilio нужно купить заранее. Что именно не настроено, покажет `GET /ready`. С реальным номером скрипт не проверялся.
