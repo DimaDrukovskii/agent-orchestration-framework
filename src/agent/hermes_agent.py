@@ -15,6 +15,7 @@ from typing import List, Dict, Any, AsyncGenerator, Optional, Tuple
 from src.config import settings
 from src.services.analytics import analytics
 from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context, load_site_map, open_section_tool
+from src.agent.escalation import escalation_intent
 from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_INTERRUPT_RULE, HERMES_LINKS_RULE, HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
@@ -115,6 +116,19 @@ def apply_tool(name: str, tool_input: Dict[str, Any], state: Dict[str, Any]) -> 
     elif name == "show_section" and result.get("url"):
         state["links"].append({"title": result["title"], "url": result["url"]})
     return result
+
+
+def escalation_result(messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Очевидная просьба о человеке в последней реплике: итог хода без обращения к модели."""
+    last = next((m["content"] for m in reversed(messages) if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+    found = escalation_intent(last)
+    if not found:
+        return None
+    department, reason, phrase = found
+    state = new_turn_state()
+    apply_tool("transfer_to_department", {"department": department, "reason": reason}, state)
+    return {"response": phrase, "messages": messages + [{"role": "assistant", "content": phrase}],
+            "pending_transfer": state["pending_transfer"], "chat": [], "links": []}
 
 
 class HermesAgent:
@@ -306,6 +320,13 @@ class HermesAgent:
             yield {"type": "done", "result": {"response": TURN_CAP_REPLY, "messages": working, "pending_transfer": None, "chat": [], "links": []}}
             return
 
+        if self.provider == "hermes_agent":  # у Hermes нет нашего инструмента перевода: очевидные случаи решаем до него
+            shortcut = escalation_result(working)
+            if shortcut:
+                yield {"type": "sentence", "text": shortcut["response"]}
+                yield {"type": "done", "result": shortcut}
+                return
+
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
@@ -412,6 +433,11 @@ class HermesAgent:
             logger.warning(f"Turn cap reached ({settings.llm_max_turns}), phone={mask_phone(caller_phone)}")
             working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
             return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
+
+        if self.provider == "hermes_agent":
+            shortcut = escalation_result(working_messages)
+            if shortcut:
+                return shortcut
 
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
