@@ -39,9 +39,13 @@
 | `TWILIO_AUTH_TOKEN` | `""` | подпись вебхука и токен потока; без него звонки не принимаются |
 | `TWILIO_ACCOUNT_SID` | `""` | только для перевода звонка на человека |
 | `TWILIO_VALIDATE_SIGNATURE` | `true` | `false` только для локальной отладки |
-| `TELEPHONY_MAX_CONCURRENT_CALLS` / `TELEPHONY_MAX_CALL_SECONDS` | `100` / `600` | потолки числа звонков и длины звонка |
+| `TELEPHONY_MAX_CONCURRENT_CALLS` / `TELEPHONY_MAX_CALL_SECONDS` | `100` / `1200` | потолки числа звонков и длины звонка |
 | `TELEPHONY_MODEL_PROFILE` | `default` | «мозг» звонка: `default` (LLM_PROVIDER), `local`, `hermes_agent` |
-| `TELEPHONY_FILLER_AFTER_MS` | `900` | агент молчит дольше: сам говорит «секунду» (фразы `fillers` в `telephony.json`) |
+| `TELEPHONY_FILLER_AFTER_MS` | `1200` | агент молчит дольше: сам говорит «угу, секунду» (фразы `fillers` в `telephony.json`) |
+| `TELEPHONY_LONG_FILLER_AFTER_MS` | `3000` | и всё ещё молчит: «ещё секунду, уточняю» (`long_fillers`) |
+| `TELEPHONY_TURN_TIMEOUT_SECONDS` | `20` | модель молчит дольше: агент извиняется и просит повторить, а не висит в тишине |
+| `LLM_MAX_TURNS` | `60` | реплик абонента за разговор, дальше агент предлагает оператора |
+| `TTS_STRESS_MARKS` | `false` | знаки ударения в тексте озвучки (словарь `STRESS` в `src/services/speech_text.py`); включать после прослушивания |
 | `HERMES_AGENT_BASE_URL` / `HERMES_AGENT_API_KEY` / `HERMES_AGENT_MODEL` | `http://hermes:8642/v1` / `""` / `hermes-agent` | Hermes Agent как «мозг» (`model_profile: hermes_agent`) |
 | `TELEPHONY_SILENCE_END_MS` | `700` | пауза, после которой реплика абонента считается законченной |
 | `TELEPHONY_IDLE_PROMPT_SECONDS` / `TELEPHONY_IDLE_HANGUP_SECONDS` | `12` / `30` | молчание абонента: переспросить, затем попрощаться |
