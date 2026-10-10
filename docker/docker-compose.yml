@@ -14,6 +14,13 @@ services:
       - POLZA_API_KEY=${POLZA_API_KEY:-}
       - POLZA_BASE_URL=${POLZA_BASE_URL:-https://polza.ai/api/v1}
       - POLZA_MODEL=${POLZA_MODEL:-anthropic/claude-sonnet-4}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+      - TTS_PROVIDER=${TTS_PROVIDER:-none}
+      - TTS_API_KEY=${TTS_API_KEY:-}
+      - TTS_VOICE_ID=${TTS_VOICE_ID:-}
+      - TTS_MODEL=${TTS_MODEL:-}
+      - TTS_STABILITY=${TTS_STABILITY:-0.45}
+      - TTS_SIMILARITY=${TTS_SIMILARITY:-0.8}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_KEY=${SUPABASE_KEY:-}
@@ -27,6 +34,7 @@ services:
       - redis
     volumes:
       - ../src:/app/src
+      - ../demo:/app/demo
     command: uvicorn src.main:app --host 0.0.0.0 --reload
 
   redis:

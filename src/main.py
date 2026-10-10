@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api import routes
 from src.api import hermes_routes
 from src.api import hermes_async_routes
+from src.api import tts_routes
 from src.worker import run_worker
 from src.utils import logger
 
@@ -27,6 +28,7 @@ app.add_middleware(
 app.include_router(routes.router, prefix="/api")
 app.include_router(hermes_routes.router, prefix="/api")
 app.include_router(hermes_async_routes.router, prefix="/api")
+app.include_router(tts_routes.router, prefix="/api")
 
 # Демо-страницы (чат, подключение, история) — тот же origin, что и /api,
 # иначе fetch('/api/...') из demo/*.html упирается в CORS/file:// при

@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     polza_base_url: str = "https://polza.ai/api/v1"
     polza_model: str = "anthropic/claude-sonnet-4"
 
+    # Креативность ответов Hermes: 0 — сухо и предсказуемо, 1 — живее и
+    # разнообразнее. Для звонка 0.6–0.8 даёт речь "не по шаблону", но без
+    # выдумок. Модель задаётся POLZA_MODEL / ANTHROPIC_MODEL выше.
+    llm_temperature: float = 0.7
+
     openai_api_key: str = ""  # нужен только legacy-пути с Whisper (src/services/audio.py)
 
     # Хранилище. По умолчанию — один SQLite-файл, без Redis и Supabase:
@@ -46,9 +51,24 @@ class Settings(BaseSettings):
     # tts_provider="none" = агент работает текстом, как сейчас, озвучка выключена.
     # Яндекс SpeechKit пока не реализован (нет токена) — см. ссылку на API
     # в src/services/tts.py, подключать только когда появится ключ.
-    tts_provider: str = "none"  # "none" | "elevenlabs" | "yandex"
+    tts_provider: str = "none"  # "none" | "polza" | "elevenlabs" | "yandex"
     tts_api_key: str = ""
     tts_voice_id: str = ""
+    # Пусто = модель по умолчанию провайдера (multilingual v2 — лучший русский).
+    # polza: "elevenlabs/text-to-speech-turbo-2-5" — быстрее, чуть проще.
+    # stability ниже = эмоциональнее и живее. Голос — TTS_VOICE_ID выше.
+    tts_model: str = ""
+    tts_stability: float = 0.45
+    tts_similarity: float = 0.8
+
+    # Телефония (Twilio) — docs/TRACK1_PLAN.md: "код-only адаптер, живого
+    # теста нет, номера не выдали". Поля здесь только для того, чтобы при
+    # появлении номера переключение было правкой .env в 2-3 строки, а не
+    # поиском, куда вообще вписывать ключи. Пусто = телефония выключена,
+    # агент работает как сейчас (симулятор/чат/виджет).
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_phone_number: str = ""
 
     # Server
     max_call_duration_seconds: int = 600

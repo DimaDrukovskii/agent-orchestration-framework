@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Звонок · МТС AI-Agent</title>
+    <style>
+      :root {
+        --color-page: #f6f5f3;
+        --color-card: #ffffff;
+        --color-ink: #0b0b0c;
+        --color-ink-soft: #5b5b63;
+        --color-line: #e8e6e2;
+        --color-chip: #f1efec;
+        --color-chip-hover: #e8e5e0;
+        --color-live: #1fa85b;
+        --color-warn-bg: #fdf3d8;
+        --color-warn-text: #7a5a00;
+        --shadow-card: 0 24px 60px rgba(20, 16, 12, 0.16), 0 2px 8px rgba(20, 16, 12, 0.06);
+
+        --duration-fast: 150ms;
+        --duration-normal: 300ms;
+        --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-page: #0e0e10;
+          --color-card: #1a1a1d;
+          --color-ink: #f4f4f6;
+          --color-ink-soft: #9b9ba6;
+          --color-line: #2a2a2f;
+          --color-chip: #26262b;
+          --color-chip-hover: #303036;
+          --color-warn-bg: #3a2f12;
+          --color-warn-text: #f5d68a;
+          --shadow-card: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100dvh;
+        background: var(--color-page);
+        color: var(--color-ink);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .demo-note {
+        max-width: 420px;
+        margin: 18vh auto 0;
+        padding: 0 20px;
+        text-align: center;
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--color-ink-soft);
+      }
+
+      .demo-note a {
+        color: var(--color-ink);
+      }
+
+      /* --- виджет: правый нижний угол --------------------------------- */
+      .widget {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 1000;
+      }
+
+      .launcher {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 52px;
+        padding: 0 20px 0 10px;
+        border: none;
+        border-radius: 999px;
+        background: var(--color-card);
+        color: var(--color-ink);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: var(--shadow-card);
+        transition: transform var(--duration-fast) var(--ease-out);
+      }
+
+      .launcher:hover {
+        transform: translateY(-2px);
+      }
+
+      .launcher .orb {
+        --orb: 34px;
+      }
+
+      .widget[data-open="true"] .launcher,
+      .widget[data-open="false"] .card {
+        display: none;
+      }
+
+      .card {
+        width: 340px;
+        padding: 16px 18px 18px;
+        border-radius: 28px;
+        background: var(--color-card);
+        box-shadow: var(--shadow-card);
+        animation: card-in var(--duration-normal) var(--ease-out);
+      }
+
+      @keyframes card-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .who-name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .who-sub {
+        font-size: 12px;
+        color: var(--color-ink-soft);
+      }
+
+      .head-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .icon-btn {
+        width: 34px;
+        height: 34px;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--color-ink-soft);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background var(--duration-fast);
+      }
+
+      .icon-btn:hover {
+        background: var(--color-chip);
+        color: var(--color-ink);
+      }
+
+      .icon-btn svg,
+      .btn svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      input:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--color-ink);
+        outline-offset: 2px;
+      }
+
+      /* --- шар в стиле ElevenLabs ------------------------------------- */
+      .orb {
+        --orb: 124px;
+        --level: 0;
+        --drift: 12s;
+        position: relative;
+        flex-shrink: 0;
+        width: var(--orb);
+        height: var(--orb);
+        border-radius: 50%;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f3dccf;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+          0 12px 32px rgba(227, 6, 17, 0.2);
+        transform: scale(calc(1 + var(--level) * 0.16));
+        transition: transform 80ms linear;
+      }
+
+      .blob {
+        position: absolute;
+        width: 78%;
+        height: 78%;
+        border-radius: 50%;
+        filter: blur(calc(var(--orb) * 0.11));
+        animation: drift var(--drift) ease-in-out infinite alternate;
+      }
+
+      .blob:nth-child(1) {
+        background: #ff7a59;
+        left: -12%;
+        top: -8%;
+      }
+
+      .blob:nth-child(2) {
+        background: #e30611;
+        right: -18%;
+        top: 18%;
+        animation-delay: -3s;
+        animation-direction: alternate-reverse;
+      }
+
+      .blob:nth-child(3) {
+        background: #ffc27a;
+        left: 14%;
+        bottom: -24%;
+        animation-delay: -6s;
+      }
+
+      .blob:nth-child(4) {
+        background: #b98cff;
+        right: 2%;
+        bottom: -12%;
+        opacity: 0.85;
+        animation-delay: -9s;
+        animation-direction: alternate-reverse;
+      }
+
+      .orb::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        opacity: 0.22;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      }
+
+      .orb::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        border-radius: 50%;
+        background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.55), transparent 48%);
+      }
+
+      @keyframes drift {
+        0% {
+          transform: translate(0, 0) rotate(0deg) scale(1);
+        }
+        50% {
+          transform: translate(22%, -14%) rotate(120deg) scale(1.12);
+        }
+        100% {
+          transform: translate(-14%, 18%) rotate(240deg) scale(0.94);
+        }
+      }
+
+      .widget[data-phase="idle"] .orb,
+      .widget[data-phase="ended"] .orb {
+        --drift: 16s;
+      }
+
+      .widget[data-phase="connecting"] .orb,
+      .widget[data-phase="thinking"] .orb {
+        --drift: 3s;
+      }
+
+      .widget[data-phase="listening"] .orb {
+        --drift: 9s;
+      }
+
+      .widget[data-phase="speaking"] .orb {
+        --drift: 5s;
+      }
+
+      .widget[data-muted="true"] .orb {
+        filter: grayscale(0.85);
+      }
+
+      /* когда голос идёт с сервера, орб пульсирует по реальной громкости;
+         с браузерным голосом громкость недоступна — лёгкое дыхание */
+      .widget[data-phase="speaking"][data-level="sim"] .orb {
+        animation: breathe 0.8s ease-in-out infinite;
+      }
+
+      @keyframes breathe {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.06);
+        }
+      }
+
+      /* --- тело карточки ----------------------------------------------- */
+      .stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 18px 0 14px;
+        text-align: center;
+      }
+
+      .stage .orb {
+        margin-bottom: 14px;
+      }
+
+      .status {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .timer {
+        min-height: 18px;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-ink-soft);
+      }
+
+      .caption {
+        width: 100%;
+        min-height: 62px;
+        margin-top: 6px;
+        font-size: 14px;
+        line-height: 1.45;
+        color: var(--color-ink-soft);
+      }
+
+      .caption[hidden] {
+        visibility: hidden;
+        display: block;
+      }
+
+      .caption-who {
+        display: block;
+        margin-bottom: 2px;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+
+      .caption-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        color: var(--color-ink);
+      }
+
+      .notice {
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: var(--color-warn-bg);
+        color: var(--color-warn-text);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .notice[hidden] {
+        display: none;
+      }
+
+      .notice code {
+        font-size: 11px;
+        word-break: break-all;
+      }
+
+      .controls {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .btn {
+        height: 46px;
+        border: none;
+        border-radius: 999px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 22px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast);
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn:active {
+        transform: scale(0.97);
+      }
+
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-start,
+      .btn-end {
+        flex: 1;
+        background: var(--color-ink);
+        color: var(--color-card);
+      }
+
+      .btn-end svg {
+        transform: rotate(135deg);
+      }
+
+      .btn-mute {
+        width: 46px;
+        padding: 0;
+        background: var(--color-chip);
+        color: var(--color-ink);
+      }
+
+      .btn-mute:hover {
+        background: var(--color-chip-hover);
+      }
+
+      .btn-mute[aria-pressed="true"] {
+        background: var(--color-ink);
+        color: var(--color-card);
+      }
+
+      .mute-slash {
+        display: none;
+      }
+
+      .btn-mute[aria-pressed="true"] .mute-slash {
+        display: inline;
+      }
+
+      .widget[data-phase="idle"] .btn-start,
+      .widget[data-phase="ended"] .btn-start,
+      .widget[data-phase="connecting"] .btn-end,
+      .widget[data-phase="listening"] .btn-end,
+      .widget[data-phase="thinking"] .btn-end,
+      .widget[data-phase="speaking"] .btn-end,
+      .widget[data-phase="listening"] .btn-mute,
+      .widget[data-phase="thinking"] .btn-mute,
+      .widget[data-phase="speaking"] .btn-mute {
+        display: inline-flex;
+      }
+
+      /* --- настройки --------------------------------------------------- */
+      .settings {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--color-line);
+        font-size: 12px;
+        color: var(--color-ink-soft);
+      }
+
+      .settings[hidden] {
+        display: none;
+      }
+
+      .settings label {
+        display: block;
+        margin-top: 8px;
+      }
+
+      .settings select,
+      .settings input {
+        width: 100%;
+        margin-top: 4px;
+        border: 1px solid var(--color-line);
+        border-radius: 10px;
+        background: var(--color-page);
+        color: var(--color-ink);
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      .voice-mode {
+        margin-top: 2px;
+        color: var(--color-ink);
+      }
+
+      @media (max-width: 480px) {
+        .widget {
+          right: 12px;
+          bottom: 12px;
+          left: 12px;
+        }
+
+        .card {
+          width: auto;
+        }
+
+        .launcher {
+          margin-left: auto;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .blob,
+        .card,
+        .orb {
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="demo-note">
+      Демо звонка. Виджет — в правом нижнем углу.<br />
+      <a href="/demo/index.html">← К чату</a>
+    </p>
+
+    <aside class="widget" id="widget" data-open="false" data-phase="idle" data-muted="false" data-level="sim">
+      <button class="launcher" id="launcher" type="button" aria-label="Открыть звонок с агентом">
+        <span class="orb" aria-hidden="true">
+          <i class="blob"></i><i class="blob"></i><i class="blob"></i><i class="blob"></i>
+        </span>
+        <span id="launcherText">Поговорить с Алиной</span>
+      </button>
+
+      <section class="card" role="dialog" aria-label="Звонок агенту МТС">
+        <header class="card-head">
+          <div>
+            <div class="who-name">Алина · МТС</div>
+            <div class="who-sub">ИИ-ассистент поддержки</div>
+          </div>
+          <div class="head-actions">
+            <button class="icon-btn" id="settingsBtn" type="button" aria-label="Настройки" aria-expanded="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+            <button class="icon-btn" id="minimizeBtn" type="button" aria-label="Свернуть">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="stage" aria-live="polite">
+          <div class="orb" aria-hidden="true">
+            <i class="blob"></i><i class="blob"></i><i class="blob"></i><i class="blob"></i>
+          </div>
+          <p class="status" id="status">Готовы поговорить?</p>
+          <p class="timer" id="timer"></p>
+          <div class="caption" id="caption" hidden>
+            <span class="caption-who" id="captionWho"></span>
+            <span class="caption-text" id="captionText"></span>
+          </div>
+        </div>
+
+        <div class="notice" id="notice" hidden></div>
+
+        <div class="controls">
+          <button class="btn btn-mute" id="muteBtn" type="button" aria-pressed="false" aria-label="Выключить микрофон">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line class="mute-slash" x1="3" y1="3" x2="21" y2="21" />
+            </svg>
+          </button>
+          <button class="btn btn-start" id="startBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+            </svg>
+            Начать звонок
+          </button>
+          <button class="btn btn-end" id="endBtn" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+            </svg>
+            Завершить
+          </button>
+        </div>
+
+        <div class="settings" id="settings" hidden>
+          <div>Голос: <span class="voice-mode" id="voiceMode">проверяю…</span></div>
+          <label>
+            Резервный голос браузера
+            <select id="voiceSelect"></select>
+          </label>
+          <label>
+            API-ключ (X-API-Key)
+            <input id="apiKeyInput" type="text" autocomplete="off" />
+          </label>
+        </div>
+      </section>
+    </aside>
+
+    <script>
+      "use strict";
+
+      // --- конфиг ---------------------------------------------------------
+      const API_URL = "/api/hermes/dialog";
+      const TTS_URL = "/api/tts";
+      const TTS_STATUS_URL = "/api/tts/status";
+      const CALLER_PHONE = "+79990000000";
+      const DEFAULT_API_KEY = "test-local-key";
+      const CONNECT_DELAY_MS = 2200;
+      const REQUEST_TIMEOUT_MS = 35000;
+      const STATUS_TIMEOUT_MS = 4000;
+      const LISTEN_RESUME_DELAY_MS = 350; // даём затихнуть эху динамиков
+      const LISTEN_RETRY_DELAY_MS = 250;
+      const NETWORK_RETRY_DELAY_MS = 1500;
+      const MAX_RECOGNITION_FAILURES = 4;
+      const MAX_AGENT_FAILURES = 3;
+      const MAX_CHUNK_CHARS = 180; // короткие куски: быстрее первый звук и мягче расход кредитов
+      const BROWSER_SPEECH_RATE = 1.05;
+      const LEVEL_SMOOTHING = 0.35;
+      const LEVEL_GAIN = 4;
+      const GREETING =
+        "Здравствуйте! На связи Алина, ИИ-ассистент МТС. Чем могу помочь? Если понадобится живой оператор — просто скажите.";
+      const FALLBACK_REPLY = "Извините, связь на секунду пропала. Повторите, пожалуйста.";
+
+      const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+      const synth = window.speechSynthesis;
+
+      // --- элементы -------------------------------------------------------
+      const $ = (id) => document.getElementById(id);
+      const widget = $("widget");
+      const statusEl = $("status");
+      const timerEl = $("timer");
+      const captionEl = $("caption");
+      const captionWho = $("captionWho");
+      const captionText = $("captionText");
+      const noticeEl = $("notice");
+      const launcherText = $("launcherText");
+      const startBtn = $("startBtn");
+      const endBtn = $("endBtn");
+      const muteBtn = $("muteBtn");
+      const settingsBtn = $("settingsBtn");
+      const settingsEl = $("settings");
+      const voiceSelect = $("voiceSelect");
+      const voiceModeEl = $("voiceMode");
+      const keyInput = $("apiKeyInput");
+
+      const STATUS_TEXT = {
+        idle: "Готовы поговорить?",
+        connecting: "Соединяем…",
+        listening: "Слушаю вас",
+        thinking: "Думаю…",
+        speaking: "Говорит Алина",
+        ended: "Звонок завершён",
+      };
+
+      // --- состояние ------------------------------------------------------
+      let call = null; // активный звонок или null
+      let recognition = null;
+      let voices = [];
+      let selectedVoiceURI = storeGet("mts_call_voice");
+      let serverVoiceAvailable = false;
+
+      // --- хранилище (может быть недоступно) ------------------------------
+      function storeGet(key) {
+        try {
+          return sessionStorage.getItem(key) || "";
+        } catch (e) {
+          return "";
+        }
+      }
+
+      function storeSet(key, value) {
+        try {
+          sessionStorage.setItem(key, value);
+        } catch (e) {}
+      }
+
+      keyInput.value = storeGet("mts_api_key") || DEFAULT_API_KEY;
+      keyInput.addEventListener("change", () => {
+        storeSet("mts_api_key", keyInput.value.trim());
+        checkServerVoice();
+      });
+
+      const apiHeaders = () => ({ "Content-Type": "application/json", "X-API-Key": keyInput.value.trim() });
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      // --- UI-хелперы -----------------------------------------------------
+      function setOpen(open) {
+        widget.dataset.open = String(open);
+      }
+
+      function setPhase(phase) {
+        widget.dataset.phase = phase;
+        statusEl.textContent = call && call.muted && phase === "listening" ? "Микрофон выключен" : STATUS_TEXT[phase];
+        if (!call) launcherText.textContent = "Поговорить с Алиной";
+      }
+
+      function showCaption(who, text) {
+        captionEl.hidden = !text;
+        captionWho.textContent = who;
+        captionText.textContent = text;
+      }
+
+      function showNotice(html) {
+        noticeEl.hidden = !html;
+        noticeEl.innerHTML = html || ""; // только статические строки из этого файла
+      }
+
+      function formatDuration(totalSeconds) {
+        const m = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+        const s = String(totalSeconds % 60).padStart(2, "0");
+        return m + ":" + s;
+      }
+
+      function startTimer(activeCall) {
+        activeCall.startedAt = Date.now();
+        const tick = () => {
+          const text = formatDuration(Math.floor((Date.now() - activeCall.startedAt) / 1000));
+          timerEl.textContent = text;
+          launcherText.textContent = "На связи " + text;
+        };
+        tick();
+        activeCall.timerId = setInterval(tick, 1000);
+      }
+
+      function setLevel(value) {
+        widget.querySelectorAll(".orb").forEach((orb) => orb.style.setProperty("--level", value.toFixed(3)));
+      }
+
+      function isActive(activeCall) {
+        return call !== null && call === activeCall && !activeCall.ended;
+      }
+
+      // --- окружение ------------------------------------------------------
+      function checkEnvironment() {
+        if (!SpeechRecognitionImpl) {
+          showNotice("Этот браузер не поддерживает распознавание речи. Откройте страницу в Chrome или Edge.");
+          startBtn.disabled = true;
+          return false;
+        }
+        if (!window.isSecureContext) {
+          showNotice(
+            "Страница открыта по небезопасному адресу — браузер заблокирует микрофон. " +
+              "Откройте <code>http://localhost:" + (location.port || "8000") + "/demo/call.html</code> " +
+              "или в Chrome добавьте <code>" + location.origin + "</code> в " +
+              "<code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> и перезапустите браузер."
+          );
+          return false;
+        }
+        return true;
+      }
+
+      async function checkServerVoice() {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+        try {
+          const response = await fetch(TTS_STATUS_URL, { headers: apiHeaders(), signal: controller.signal });
+          serverVoiceAvailable = response.ok && (await response.json()).enabled === true;
+        } catch (e) {
+          serverVoiceAvailable = false;
+        } finally {
+          clearTimeout(timeout);
+        }
+        voiceModeEl.textContent = serverVoiceAvailable ? "серверный (живой)" : "браузерный (резервный, роботизированный)";
+        return serverVoiceAvailable;
+      }
+
+      // --- резервные голоса браузера --------------------------------------
+      function voiceScore(v) {
+        let score = 0;
+        if (/premium|enhanced|neural|natural/i.test(v.name)) score += 4;
+        if (/milena|yuri|alena|katya|google|yandex/i.test(v.name)) score += 2;
+        if (!v.localService) score += 1;
+        return score;
+      }
+
+      function loadVoices() {
+        if (!synth) return;
+        voices = synth
+          .getVoices()
+          .filter((v) => v.lang.toLowerCase().startsWith("ru"))
+          .sort((a, b) => voiceScore(b) - voiceScore(a));
+        voiceSelect.replaceChildren(
+          ...voices.map((v) => {
+            const opt = document.createElement("option");
+            opt.value = v.voiceURI;
+            opt.textContent = v.name;
+            return opt;
+          })
+        );
+        if (!voices.length) {
+          const opt = document.createElement("option");
+          opt.textContent = "Русский голос не найден";
+          voiceSelect.replaceChildren(opt);
+          return;
+        }
+        const chosen = voices.find((v) => v.voiceURI === selectedVoiceURI) || voices[0];
+        selectedVoiceURI = chosen.voiceURI;
+        voiceSelect.value = chosen.voiceURI;
+      }
+
+      voiceSelect.addEventListener("change", () => {
+        selectedVoiceURI = voiceSelect.value;
+        storeSet("mts_call_voice", selectedVoiceURI);
+      });
+
+      if (synth) {
+        loadVoices();
+        synth.addEventListener("voiceschanged", loadVoices);
+      }
+
+      // --- озвучка --------------------------------------------------------
+      function splitForSpeech(text) {
+        const clean = text.replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim();
+        const sentences = clean.match(/[^.!?…]+[.!?…]*\s*/g) || [clean];
+        const chunks = [];
+        let buffer = "";
+        for (const sentence of sentences) {
+          if (buffer && (buffer + sentence).length > MAX_CHUNK_CHARS) {
+            chunks.push(buffer.trim());
+            buffer = "";
+          }
+          buffer += sentence;
+        }
+        if (buffer.trim()) chunks.push(buffer.trim());
+        return chunks;
+      }
+
+      // серверный голос: текст -> /api/tts -> mp3 -> декодирование. null = не вышло.
+      async function fetchSpeech(activeCall, chunk) {
+        try {
+          const response = await fetch(TTS_URL, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: JSON.stringify({ text: chunk }),
+            signal: activeCall.abort.signal,
+          });
+          if (!response.ok) throw new Error("tts " + response.status);
+          return await activeCall.audio.decodeAudioData(await response.arrayBuffer());
+        } catch (e) {
+          if (!isActive(activeCall)) return null;
+          if (activeCall.voice === "server") {
+            activeCall.voice = "browser";
+            showNotice("Серверный голос недоступен — говорю голосом браузера.");
+          }
+          return null;
+        }
+      }
+
+      function playBuffer(activeCall, buffer) {
+        return new Promise((resolve) => {
+          const { audio, analyser } = activeCall;
+          const source = audio.createBufferSource();
+          source.buffer = buffer;
+          source.connect(analyser);
+          analyser.connect(audio.destination);
+          activeCall.source = source;
+          widget.dataset.level = "live";
+
+          const samples = new Uint8Array(analyser.fftSize);
+          let smoothed = 0;
+          let frame = 0;
+          const measure = () => {
+            analyser.getByteTimeDomainData(samples);
+            let sum = 0;
+            for (const s of samples) sum += ((s - 128) / 128) ** 2;
+            smoothed += (Math.min(1, Math.sqrt(sum / samples.length) * LEVEL_GAIN) - smoothed) * LEVEL_SMOOTHING;
+            setLevel(smoothed);
+            frame = requestAnimationFrame(measure);
+          };
+          frame = requestAnimationFrame(measure);
+
+          source.onended = () => {
+            cancelAnimationFrame(frame);
+            setLevel(0);
+            widget.dataset.level = "sim";
+            activeCall.source = null;
+            resolve();
+          };
+          source.start();
+        });
+      }
+
+      function speakWithBrowser(chunk) {
+        return new Promise((resolve) => {
+          if (!synth) return resolve();
+          const utter = new SpeechSynthesisUtterance(chunk);
+          utter.lang = "ru-RU";
+          utter.rate = BROWSER_SPEECH_RATE;
+          const voice = voices.find((v) => v.voiceURI === selectedVoiceURI);
+          if (voice) utter.voice = voice;
+          // в Chrome onend иногда не приходит — страхуемся таймером
+          const guard = setTimeout(resolve, Math.max(5000, chunk.length * 160));
+          const done = () => {
+            clearTimeout(guard);
+            resolve();
+          };
+          utter.onend = done;
+          utter.onerror = done;
+          synth.speak(utter);
+        });
+      }
+
+      async function speak(activeCall, text) {
+        const chunks = splitForSpeech(text);
+        // следующий кусок заказываем заранее, пока играет текущий — без пауз между фразами
+        let pending = activeCall.voice === "server" ? fetchSpeech(activeCall, chunks[0]) : null;
+        for (let i = 0; i < chunks.length; i++) {
+          if (!isActive(activeCall)) return;
+          const buffer = pending ? await pending : null;
+          pending = activeCall.voice === "server" && i + 1 < chunks.length ? fetchSpeech(activeCall, chunks[i + 1]) : null;
+          if (!isActive(activeCall)) return;
+          if (buffer) await playBuffer(activeCall, buffer);
+          else await speakWithBrowser(chunks[i]);
+        }
+      }
+
+      // --- распознавание речи ---------------------------------------------
+      function teardownRecognition() {
+        if (!recognition) return;
+        const rec = recognition;
+        recognition = null;
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        try {
+          rec.abort();
+        } catch (e) {}
+      }
+
+      function listen(activeCall) {
+        if (!isActive(activeCall) || activeCall.busy) return;
+        teardownRecognition();
+        if (activeCall.muted) {
+          setPhase("listening"); // статус покажет «Микрофон выключен»
+          return;
+        }
+
+        const rec = new SpeechRecognitionImpl();
+        rec.lang = "ru-RU";
+        rec.interimResults = true;
+        rec.continuous = false;
+        rec.maxAlternatives = 1;
+        recognition = rec;
+
+        let finalText = "";
+        let failure = null;
+
+        rec.onresult = (event) => {
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result.isFinal) finalText += result[0].transcript;
+            else interim += result[0].transcript;
+          }
+          showCaption("Вы", (finalText + interim).trim());
+        };
+
+        rec.onerror = (event) => {
+          failure = event.error;
+        };
+
+        rec.onend = () => {
+          if (rec !== recognition) return; // распознавание уже заменено или снято
+          recognition = null;
+          if (!isActive(activeCall)) return;
+
+          const text = finalText.trim();
+          if (text) {
+            activeCall.failures = 0;
+            handleUserTurn(activeCall, text);
+            return;
+          }
+          handleSilentEnd(activeCall, failure);
+        };
+
+        setPhase("listening");
+        try {
+          rec.start();
+        } catch (e) {
+          handleSilentEnd(activeCall, "start-failed");
+        }
+      }
+
+      function handleSilentEnd(activeCall, failure) {
+        if (failure === "not-allowed" || failure === "service-not-allowed") {
+          failCall(activeCall, "Нет доступа к микрофону. Разрешите его для этой страницы и позвоните снова.");
+          return;
+        }
+        if (failure === "audio-capture") {
+          failCall(activeCall, "Микрофон не найден. Подключите его и позвоните снова.");
+          return;
+        }
+        const benign = !failure || failure === "no-speech" || failure === "aborted";
+        if (!benign) {
+          activeCall.failures += 1;
+          if (activeCall.failures >= MAX_RECOGNITION_FAILURES) {
+            failCall(
+              activeCall,
+              "Распознавание речи недоступно (" + failure + "). Chrome отправляет звук на сервер Google — проверьте интернет."
+            );
+            return;
+          }
+        }
+        setTimeout(
+          () => listen(activeCall),
+          failure === "network" ? NETWORK_RETRY_DELAY_MS : LISTEN_RETRY_DELAY_MS
+        );
+      }
+
+      // --- обмен с агентом ------------------------------------------------
+      async function requestAgent(activeCall, text) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        storeSet("mts_api_key", keyInput.value.trim());
+        try {
+          const response = await fetch(API_URL, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: JSON.stringify({
+              session_id: activeCall.sessionId,
+              caller_phone: CALLER_PHONE,
+              user_message: text,
+            }),
+            signal: controller.signal,
+          });
+          if (response.status === 401) return { fatal: "Неверный API-ключ (X-API-Key)." };
+          if (!response.ok) return { reply: FALLBACK_REPLY, failed: true };
+          const data = await response.json();
+          return { reply: data.agent_response || FALLBACK_REPLY, transfer: data.transfer || null };
+        } catch (e) {
+          return { reply: FALLBACK_REPLY, failed: true };
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      async function handleUserTurn(activeCall, text) {
+        activeCall.busy = true; // пока агент думает и говорит, микрофон не слушаем
+        teardownRecognition();
+        showCaption("Вы", text);
+        setPhase("thinking");
+
+        const result = await requestAgent(activeCall, text);
+        if (!isActive(activeCall)) return;
+        if (result.fatal) {
+          failCall(activeCall, result.fatal);
+          return;
+        }
+
+        activeCall.agentFailures = result.failed ? activeCall.agentFailures + 1 : 0;
+        if (activeCall.agentFailures >= MAX_AGENT_FAILURES) {
+          failCall(activeCall, "Агент не отвечает. Проверьте сервер и баланс LLM-провайдера.");
+          return;
+        }
+
+        showCaption("Алина", result.reply);
+        setPhase("speaking");
+        await speak(activeCall, result.reply);
+        if (!isActive(activeCall)) return;
+
+        if (result.transfer) {
+          const dept = result.transfer.department || "профильного специалиста";
+          finishCall(activeCall, "Переводим вас на отдел: " + dept);
+          return;
+        }
+
+        activeCall.busy = false;
+        await sleep(LISTEN_RESUME_DELAY_MS);
+        listen(activeCall);
+      }
+
+      // --- жизненный цикл звонка -----------------------------------------
+      function newSessionId() {
+        return window.crypto && crypto.randomUUID ? crypto.randomUUID() : "call-" + Date.now();
+      }
+
+      async function startCall() {
+        if (call || !checkEnvironment()) return;
+        const activeCall = {
+          sessionId: newSessionId(),
+          muted: false,
+          busy: true,
+          ended: false,
+          failures: 0,
+          agentFailures: 0,
+          startedAt: 0,
+          timerId: null,
+          voice: "browser",
+          abort: new AbortController(),
+          audio: null,
+          analyser: null,
+          source: null,
+        };
+        call = activeCall;
+
+        // AudioContext создаём сразу в обработчике клика — иначе браузер не даст играть звук
+        if (AudioContextImpl) {
+          activeCall.audio = new AudioContextImpl();
+          activeCall.audio.resume();
+          activeCall.analyser = activeCall.audio.createAnalyser();
+          activeCall.analyser.fftSize = 256;
+        }
+
+        timerEl.textContent = "";
+        showCaption("", "");
+        showNotice("");
+        setMuted(false);
+        setPhase("connecting");
+
+        const [serverVoice] = await Promise.all([checkServerVoice(), sleep(CONNECT_DELAY_MS)]); // имитация дозвона
+        if (!isActive(activeCall)) return;
+        if (serverVoice && activeCall.audio) activeCall.voice = "server";
+
+        startTimer(activeCall);
+        showCaption("Алина", GREETING);
+        setPhase("speaking");
+        await speak(activeCall, GREETING);
+        if (!isActive(activeCall)) return;
+
+        activeCall.busy = false;
+        await sleep(LISTEN_RESUME_DELAY_MS);
+        listen(activeCall);
+      }
+
+      function teardownCall(activeCall) {
+        activeCall.ended = true;
+        clearInterval(activeCall.timerId);
+        activeCall.abort.abort();
+        teardownRecognition();
+        if (activeCall.source) {
+          try {
+            activeCall.source.stop();
+          } catch (e) {}
+        }
+        if (activeCall.audio) activeCall.audio.close().catch(() => {});
+        if (synth) synth.cancel();
+        setLevel(0);
+        widget.dataset.level = "sim";
+      }
+
+      function finishCall(activeCall, message) {
+        const seconds = activeCall.startedAt ? Math.floor((Date.now() - activeCall.startedAt) / 1000) : 0;
+        teardownCall(activeCall);
+        call = null;
+        setPhase("ended");
+        statusEl.textContent = message || STATUS_TEXT.ended;
+        timerEl.textContent = seconds ? "Длительность " + formatDuration(seconds) : "";
+      }
+
+      function failCall(activeCall, message) {
+        finishCall(activeCall, "Звонок прерван");
+        showNotice(message);
+      }
+
+      // --- микрофон -------------------------------------------------------
+      function setMuted(muted) {
+        if (call) call.muted = muted;
+        widget.dataset.muted = String(muted);
+        muteBtn.setAttribute("aria-pressed", String(muted));
+        muteBtn.setAttribute("aria-label", muted ? "Включить микрофон" : "Выключить микрофон");
+      }
+
+      function toggleMute() {
+        if (!call) return;
+        const muted = !call.muted;
+        setMuted(muted);
+        if (muted) {
+          teardownRecognition();
+          if (widget.dataset.phase === "listening") setPhase("listening");
+        } else if (!call.busy) {
+          listen(call);
+        }
+      }
+
+      // --- события --------------------------------------------------------
+      $("launcher").addEventListener("click", () => setOpen(true));
+      $("minimizeBtn").addEventListener("click", () => setOpen(false));
+      settingsBtn.addEventListener("click", () => {
+        const open = settingsEl.hidden;
+        settingsEl.hidden = !open;
+        settingsBtn.setAttribute("aria-expanded", String(open));
+      });
+      startBtn.addEventListener("click", startCall);
+      endBtn.addEventListener("click", () => {
+        if (call) finishCall(call);
+      });
+      muteBtn.addEventListener("click", toggleMute);
+      window.addEventListener("beforeunload", () => {
+        if (synth) synth.cancel();
+      });
+
+      checkEnvironment();
+      checkServerVoice();
+    </script>
+  </body>
+</html>

@@ -81,6 +81,7 @@ class HermesAgent:
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=600,
+                temperature=settings.llm_temperature,
                 system=HERMES_SYSTEM_PROMPT,
                 tools=TOOLS_SCHEMA,
                 messages=working_messages
@@ -122,6 +123,7 @@ class HermesAgent:
         closing = await self.client.messages.create(
             model=self.model,
             max_tokens=300,
+            temperature=settings.llm_temperature,
             system=HERMES_SYSTEM_PROMPT,
             messages=working_messages + [{"role": "user", "content": CLOSING_PROMPT}]
         )
@@ -155,6 +157,7 @@ class HermesAgent:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=600,
+                temperature=settings.llm_temperature,
                 messages=[{"role": "system", "content": HERMES_SYSTEM_PROMPT}] + working_messages,
                 tools=TOOLS_SCHEMA_OPENAI,
             )
@@ -197,6 +200,7 @@ class HermesAgent:
         closing = await self.client.chat.completions.create(
             model=self.model,
             max_tokens=300,
+            temperature=settings.llm_temperature,
             messages=(
                 [{"role": "system", "content": HERMES_SYSTEM_PROMPT}]
                 + working_messages
@@ -226,6 +230,7 @@ class HermesAgent:
             stream = await self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=600,
+                temperature=settings.llm_temperature,
                 messages=[{"role": "system", "content": HERMES_SYSTEM_PROMPT}] + messages,
                 stream=True,
             )
@@ -238,6 +243,7 @@ class HermesAgent:
         async with self.client.messages.stream(
             model=self.model,
             max_tokens=600,
+            temperature=settings.llm_temperature,
             system=HERMES_SYSTEM_PROMPT,
             messages=messages
         ) as stream:
