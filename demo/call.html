@@ -53,6 +53,26 @@
           "Helvetica Neue", Arial, sans-serif;
       }
 
+      /* встроенный режим (?embed=1): прозрачный фон, без заглушки, виджет у края iframe */
+      .embed body {
+        min-height: 0;
+        background: transparent;
+      }
+
+      .embed .demo-note {
+        display: none;
+      }
+
+      .embed .widget {
+        right: 40px; /* запас под тень, чтобы край iframe её не обрезал */
+        bottom: 40px;
+        left: auto;
+      }
+
+      .embed .card {
+        width: 340px; /* ширину iframe родитель подгоняет под виджет, а не наоборот */
+      }
+
       .demo-note {
         max-width: 420px;
         margin: 18vh auto 0;
@@ -552,11 +572,14 @@
         }
       }
     </style>
+      <script>
+      if (new URLSearchParams(location.search).get("embed") === "1") document.documentElement.classList.add("embed");
+    </script>
   </head>
   <body>
     <p class="demo-note">
       Демо звонка. Виджет — в правом нижнем углу.<br />
-      <a href="/demo/index.html">← К чату</a>
+      <a href="/demo/index.html">← На главную</a>
     </p>
 
     <aside class="widget" id="widget" data-open="false" data-phase="idle" data-muted="false" data-level="sim">
@@ -647,6 +670,7 @@
       "use strict";
 
       // --- конфиг ---------------------------------------------------------
+      const EMBED = document.documentElement.classList.contains("embed");
       const API_URL = "/api/hermes/dialog";
       const TTS_URL = "/api/tts";
       const TTS_STATUS_URL = "/api/tts/status";
@@ -1652,6 +1676,19 @@
       window.addEventListener("beforeunload", () => {
         if (synth) synth.cancel();
       });
+
+      // встроенный режим: сообщаем странице-хозяину размер виджета и слушаем команду «открыть»
+      if (EMBED) {
+        const reportSize = () => {
+          const box = widget.getBoundingClientRect();
+          parent.postMessage({ type: "mts-agent-size", width: Math.ceil(box.width) + 80, height: Math.ceil(box.height) + 80 }, "*");
+        };
+        new ResizeObserver(reportSize).observe(widget);
+        window.addEventListener("message", (event) => {
+          if (event.source === parent && event.data && event.data.type === "mts-agent-open") setOpen(true);
+        });
+        reportSize();
+      }
 
       checkEnvironment();
       checkServerVoice();
