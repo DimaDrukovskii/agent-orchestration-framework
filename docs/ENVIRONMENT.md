@@ -6,7 +6,23 @@
 
 | Переменная | Где используется | Статус |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | `src/services/llm.py`, `src/agent/hermes_agent.py` | без него Hermes не запустится |
+| `LLM_PROVIDER` | `src/agent/hermes_agent.py` | `anthropic` (дефолт) \| `polza` — модель берётся у Polza AI |
+| `ANTHROPIC_API_KEY` | `src/services/llm.py`, `src/agent/hermes_agent.py` | нужен при `LLM_PROVIDER=anthropic` |
+| `POLZA_API_KEY` | `src/agent/hermes_agent.py`, `src/services/tts.py` | нужен при `LLM_PROVIDER=polza` и при `TTS_PROVIDER=polza` |
+
+## Модель, голос, температура
+
+| Переменная | Дефолт | Смысл |
+|---|---|---|
+| `POLZA_MODEL` | `anthropic/claude-sonnet-4` | модель на Polza (`POLZA_BASE_URL=https://polza.ai/api/v1`) |
+| `LLM_TEMPERATURE` | `0.7` | 0 — сухо и предсказуемо, 1 — живее; идёт во все вызовы LLM |
+| `TTS_PROVIDER` | `none` | `none` \| `polza` (голоса ElevenLabs на ключе Polza) \| `elevenlabs` (прямой ключ) |
+| `TTS_VOICE_ID` | пусто (`Sarah` для polza) | пресет Polza: Sarah, Rachel, Aria, Roger; для `elevenlabs` — voice_id |
+| `TTS_MODEL` | пусто = модель провайдера по умолчанию | например `elevenlabs/text-to-speech-turbo-2-5` — быстрее |
+| `TTS_STABILITY`, `TTS_SIMILARITY` | `0.45`, `0.8` | ниже stability — эмоциональнее |
+| `TTS_API_KEY` | пусто | только для `TTS_PROVIDER=elevenlabs` |
+| `LOCAL_BASE_URL` | `http://host.docker.internal:11434/v1` | OpenAI-совместимый сервер модели на этой или другой машине (Ollama, LM Studio, vLLM) |
+| `LOCAL_MODEL`, `LOCAL_API_KEY` | `hermes3`, `local` | имя модели на том сервере; ключ обычно не проверяется |
 
 ## Хранилище — по умолчанию SQLite, ничего поднимать не нужно
 
@@ -43,8 +59,15 @@
 ## Готовый .env целиком
 
 ```bash
-# Обязательно — больше ничего для запуска не нужно
-ANTHROPIC_API_KEY=sk-ant-...
+# Модель: Polza AI (или LLM_PROVIDER=anthropic + ANTHROPIC_API_KEY)
+LLM_PROVIDER=polza
+POLZA_API_KEY=pza_...
+POLZA_MODEL=anthropic/claude-sonnet-4
+LLM_TEMPERATURE=0.7
+
+# Голос (без этого — резервный голос браузера)
+TTS_PROVIDER=polza
+TTS_VOICE_ID=Sarah
 
 # Хранилище (дефолт — SQLite, строки можно не писать)
 CACHE_BACKEND=sqlite
