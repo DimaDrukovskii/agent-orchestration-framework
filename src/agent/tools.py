@@ -4,6 +4,7 @@
 """
 
 import json
+import math
 import os
 import glob
 from typing import List, Dict, Any
@@ -83,7 +84,7 @@ TOOLS_SCHEMA = [
 
 # ---- Реализация инструментов ----
 
-KB_CONTEXT_MAX_CHARS = 900  # лучший фрагмент целиком: меньше токенов, быстрее первый ответ
+KB_CONTEXT_MAX_CHARS = 1500  # 900 резало вторую выборку: на 50 тестовых абонентах 1500 даёт 31 попадание из 34, 900 только 28
 KB_TOOL_MAX_CHARS = 3000
 KB_MIN_WORD_LEN = 4  # короткие слова («не», «у», «как») совпадают с чем угодно
 
@@ -123,9 +124,15 @@ def _kb_chunks() -> List[tuple]:
     return chunks
 
 
+# как название тарифа звучит в речи и как оно записано в базе («ред» говорят, RED написано)
+KB_ALIASES = {"ред": "red", "джуниор": "junior", "джунир": "junior", "рийл": "риил", "рил": "риил", "налегке": "налегке"}
+KB_SHORT_BRANDS = {"топ", "ред"}
+
+
 def _kb_stems(query: str) -> List[str]:
     words = [w.strip(".,!?;:«»\"'()") for w in query.lower().split()]
-    long_words = [w for w in words if _is_searchable(w)]
+    words = [KB_ALIASES.get(w, w) for w in words]
+    long_words = [w for w in words if _is_searchable(w) or w in KB_SHORT_BRANDS]
     return list(dict.fromkeys(w[:KB_STEM_LEN] for w in (long_words or words) if w))
 
 
@@ -136,12 +143,26 @@ def search_knowledge_base(query: str, max_chars: int = KB_TOOL_MAX_CHARS) -> str
     """
     try:
         stems = _kb_stems(query)
+        raw = _kb_chunks()
+        # «Используй это для вопросов: …» в начале файла: подсказка для поиска. Она помогает куску с фактами
+        # (таблице цен) найтись по общим словам, но вводный кусок с ней сам не должен обгонять таблицу
+        hints = {name: line for name, chunk in raw for line in chunk.splitlines() if line.startswith("Используй это")}
+        chunks = []
+        for name, chunk in raw:
+            own = "\n".join(l for l in chunk.splitlines() if not l.startswith("Используй это"))
+            has_hint = any(l.startswith("Используй это") for l in chunk.splitlines())
+            chunks.append((name, chunk, (own if has_hint else chunk + "\n" + hints.get(name, "")).lower()))
+        # редкое слово («проще», «red») весит больше общего («тариф», «сколько»): иначе вводный абзац
+        # файла, набитый общими словами, обгоняет таблицу с ценами
+        weights = {}
+        for stem in stems:
+            df = sum(1 for _, _, lowered in chunks if stem in lowered)
+            weights[stem] = math.log(1 + len(chunks) / df) if df else 0.0
         scored = []
-        for name, chunk in _kb_chunks():
-            lowered = chunk.lower()
-            score = sum(min(lowered.count(stem), 3) for stem in stems)
+        for name, chunk, lowered in chunks:
+            score = sum(weights[stem] * min(lowered.count(stem), 3) for stem in stems)
             if score > 0:
-                scored.append((score, name, chunk))
+                scored.append((round(score, 1), name, chunk))
         if not scored:
             return "Ничего не найдено в базе знаний по этому запросу."
 

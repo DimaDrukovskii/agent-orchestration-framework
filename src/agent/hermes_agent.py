@@ -60,6 +60,12 @@ def with_kb_context(messages: List[Dict[str, Any]], snippet: str) -> List[Dict[s
     return result
 
 
+def recent_user_text(messages: List[Dict[str, Any]], count: int = 2) -> str:
+    """Последние реплики абонента одной строкой: в «а сколько там интернета?» тема названа в предыдущей."""
+    texts = [m["content"] for m in messages if m.get("role") == "user" and isinstance(m.get("content"), str)]
+    return " ".join(t.split(" [СПРАВКА")[0] for t in texts[-count:])
+
+
 def count_user_turns(messages: List[Dict[str, Any]]) -> int:
     return sum(1 for m in messages if m.get("role") == "user")
 
@@ -303,9 +309,7 @@ class HermesAgent:
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
-            last_user = next((m["content"] for m in reversed(working)
-                              if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
-            snippet = kb_context(last_user)
+            snippet = kb_context(recent_user_text(working))
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
                  and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
@@ -412,9 +416,7 @@ class HermesAgent:
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
-            last_user = next((m["content"] for m in reversed(working_messages)
-                              if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
-            snippet = kb_context(last_user)
+            snippet = kb_context(recent_user_text(working_messages))
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
                  and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
