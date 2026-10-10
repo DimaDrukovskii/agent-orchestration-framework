@@ -37,24 +37,33 @@ tenants/
   mts/               данные МТС: prompt.md, knowledge/, site_map.json, tenant.json, telephony.json
   _template/         заготовка для новой компании
 docker/              Dockerfile, docker-compose.yml (приложение и Redis)
-tests/               автотесты (118), без сетевых вызовов
-scripts/             load_test.py и load_test_phone.py (нагрузка без платных запросов), measure_cost.py (ПЛАТНЫЙ замер цены диалога и минуты), test_call.py (сценарии текстом)
+tests/               автотесты (179), без сетевых вызовов
+scripts/             setup.py (установка и подключение номера), load_test.py и load_test_phone.py (нагрузка без платных запросов), measure_cost.py (ПЛАТНЫЙ замер цены диалога и минуты), test_call.py (сценарии текстом)
 docs/
   website_side_bar/  продукт: архитектура, переменные окружения, подключение модели, голосовой конвейер, БД
   mts/               проект МТС: план Трека 1, контракт интеграции, комплаенс, масштабирование, результаты
 ```
 
-## Запуск
+## Запуск за 5 минут
+
+Нужны Python 3, Docker и ключ [polza.ai](https://polza.ai) (модель, голос и распознавание через один ключ).
 
 ```bash
-# в корне создайте .env (ключи и настройки: docs/website_side_bar/ENVIRONMENT.md)
-docker compose --env-file .env -f docker/docker-compose.yml up -d
-open http://localhost:8000/demo/call.html     # виджет; лендинг: /demo/index.html
-python3 -m pytest tests -q                    # автотесты
+python3 scripts/setup.py
 ```
 
-Нужны `POLZA_API_KEY` (модель, голос, распознавание), `POLZA_MODEL`, `AGENT_API_KEY`. Микрофон работает только по
-`localhost` или `https`. Всегда запускайте compose с `--env-file .env`, иначе контейнер поднимется без ключей.
+Скрипт спросит ключ, проверит его, запишет `.env` (уже заданные значения не трогает), соберёт и запустит контейнеры
+(первая сборка 2–4 минуты), покажет `/ready` (что настроено, чего не хватает) и задаст агенту один тестовый вопрос.
+Дальше: виджет `http://localhost:8000/demo/call.html`, расходы `/demo/tools/analytics.html`.
+
+**Телефон:** `python3 scripts/setup.py --phone`: спросит Twilio SID и токен, найдёт ваш номер, поднимет временный https-адрес
+(если установлен `cloudflared`, иначе спросит адрес из `ngrok http 8000`) и направит номер на сервер. Подробности и ограничения:
+[docs/website_side_bar/TELEPHONY.md](docs/website_side_bar/TELEPHONY.md). Без вопросов: `--yes`, ключи из переменных окружения
+(`POLZA_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `PUBLIC_BASE_URL`).
+
+Вручную: создайте `.env` по [docs/website_side_bar/ENVIRONMENT.md](docs/website_side_bar/ENVIRONMENT.md) и запустите
+`docker compose --env-file .env -f docker/docker-compose.yml up -d` (всегда с `--env-file .env`, иначе контейнер поднимется без ключей).
+Микрофон в браузере работает только по `localhost` или `https`. Автотесты: `python3 -m pytest tests -q`.
 
 ## Новая компания за час
 

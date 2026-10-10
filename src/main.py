@@ -8,6 +8,7 @@ from src.api import llm_routes
 from src.api import stt_routes
 from src.api import tenant_routes
 from src.api import analytics_routes
+from src.api import ready_routes
 from src.telephony import routes as telephony_routes
 from src.config import non_chat_model, settings
 from src.utils import logger
@@ -41,6 +42,7 @@ app.include_router(llm_routes.router, prefix="/api")
 app.include_router(stt_routes.router, prefix="/api")
 app.include_router(tenant_routes.router, prefix="/api")
 app.include_router(analytics_routes.router, prefix="/api")
+app.include_router(ready_routes.router)  # GET /ready: что настроено, чего не хватает
 app.include_router(telephony_routes.router)  # Twilio: свои адреса /telephony/twilio/*, авторизация по подписи Twilio
 
 # Демо-страницы (виджет, лендинг, служебные в demo/tools) — тот же origin, что и /api,

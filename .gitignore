@@ -10,3 +10,5 @@ data/*.wav
 data/*.mp3
 data/*.txt
 data/clients_report*.json
+.env.bak
+data/tunnel.log
