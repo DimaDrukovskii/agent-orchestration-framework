@@ -20,6 +20,7 @@ TTSService.synthesize() — единая точка входа независи�
 """
 
 import base64
+from collections import OrderedDict
 from typing import Any, Dict, Optional, Tuple
 
 from src.config import settings
@@ -33,11 +34,14 @@ class TTSNotConfigured(Exception):
 POLZA_DEFAULT_MODEL = "elevenlabs/text-to-speech-multilingual-v2"
 POLZA_DEFAULT_VOICE = "Sarah"
 ELEVENLABS_DEFAULT_MODEL = "eleven_multilingual_v2"
+TTS_CACHE_MAX_ENTRIES = 200  # ~50 КБ на фразу: потолок около 10 МБ памяти
 
 
 class TTSService:
     def __init__(self):
         self.provider = settings.tts_provider
+        # приветствие и типовые фразы повторяются в каждом звонке — платим за озвучку один раз
+        self._cache: "OrderedDict[tuple, bytes]" = OrderedDict()
 
     @property
     def enabled(self) -> bool:
@@ -80,6 +84,19 @@ class TTSService:
         """Вернуть аудио (mp3) для текста, либо None если озвучка выключена."""
         if self.provider == "none":
             return None
+        key = (self.provider, settings.tts_model, settings.tts_voice_id, text)
+        cached = self._cache.get(key)
+        if cached is not None:
+            self._cache.move_to_end(key)
+            return cached
+        audio = await self._synthesize_uncached(text)
+        if audio:
+            self._cache[key] = audio
+            while len(self._cache) > TTS_CACHE_MAX_ENTRIES:
+                self._cache.popitem(last=False)
+        return audio
+
+    async def _synthesize_uncached(self, text: str) -> Optional[bytes]:
         if self.provider == "polza":
             return await self._synthesize_polza(text)
         if self.provider == "elevenlabs":

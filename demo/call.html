@@ -645,6 +645,9 @@
       const BARGE_ECHO_RATIO = 0.4; // столько слов совпало с речью Алины — это эхо динамиков, а не абонент
       const BARGE_FINISH_TIMEOUT_MS = 7000; // после перебивания дослушиваем не дольше этого
       const BARGE_RESTART_DELAY_MS = 200;
+      // Chrome оценивает уверенность распознавания (0..1); ниже порога модель переспросит, как живой оператор
+      const CONFIDENCE_MIN = 0.75;
+      const UNCERTAIN_MARK = "[неуверенно распознано] ";
       const LEVEL_SMOOTHING = 0.35;
       const LEVEL_GAIN = 4;
       const GREETING = "Здравствуйте, менеджер Алина от компании МТС, слушаю.";
@@ -1007,13 +1010,20 @@
 
         let triggered = false;
         let finalText = "";
+        let minConfidence = 1;
 
         rec.onresult = (event) => {
           let heard = "";
           finalText = "";
+          minConfidence = 1;
           for (let i = 0; i < event.results.length; i++) {
             heard += event.results[i][0].transcript;
-            if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalText += event.results[i][0].transcript;
+              if (event.results[i][0].confidence > 0) {
+                minConfidence = Math.min(minConfidence, event.results[i][0].confidence);
+              }
+            }
           }
           if (!triggered) {
             const wordCount = heard.trim().split(/\s+/).filter(Boolean).length;
@@ -1046,6 +1056,7 @@
             const text = finalText.trim();
             if (text) {
               activeCall.failures = 0;
+              activeCall.uncertain = minConfidence < CONFIDENCE_MIN;
               handleUserTurn(activeCall, text);
             } else {
               activeCall.interrupted = false; // не разобрали, что сказал: слушаем заново
@@ -1125,13 +1136,16 @@
 
         let finalText = "";
         let failure = null;
+        let minConfidence = 1;
 
         rec.onresult = (event) => {
           let interim = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
-            if (result.isFinal) finalText += result[0].transcript;
-            else interim += result[0].transcript;
+            if (result.isFinal) {
+              finalText += result[0].transcript;
+              if (result[0].confidence > 0) minConfidence = Math.min(minConfidence, result[0].confidence);
+            } else interim += result[0].transcript;
           }
           showCaption("Вы", (finalText + interim).trim());
         };
@@ -1148,6 +1162,7 @@
           const text = finalText.trim();
           if (text) {
             activeCall.failures = 0;
+            activeCall.uncertain = minConfidence < CONFIDENCE_MIN;
             handleUserTurn(activeCall, text);
             return;
           }
@@ -1192,6 +1207,8 @@
       async function requestAgent(activeCall, text) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        const spoken = activeCall.uncertain ? UNCERTAIN_MARK + text : text;
+        activeCall.uncertain = false;
         storeSet("mts_api_key", keyInput.value.trim());
         try {
           const response = await fetch(API_URL, {
@@ -1200,7 +1217,7 @@
             body: JSON.stringify({
               session_id: activeCall.sessionId,
               caller_phone: CALLER_PHONE,
-              user_message: text,
+              user_message: spoken,
               model_profile: modelProfile,
             }),
             signal: controller.signal,
