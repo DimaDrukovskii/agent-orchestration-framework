@@ -683,7 +683,8 @@
       let voices = [];
       let selectedVoiceURI = storeGet("mts_call_voice");
       let serverVoiceAvailable = false;
-      let modelProfile = storeGet("mts_model_profile") === "local" ? "local" : "default";
+      const MODEL_PROFILES = ["default", "local", "hermes_agent"];
+      let modelProfile = MODEL_PROFILES.includes(storeGet("mts_model_profile")) ? storeGet("mts_model_profile") : "default";
 
       // --- хранилище (может быть недоступно) ------------------------------
       function storeGet(key) {
@@ -799,8 +800,15 @@
           "local"
         );
         localOpt.disabled = !status.local.available;
-        modelSelect.replaceChildren(defaultOpt, localOpt);
+        const hermes = status.hermes_agent || { available: false, model: "hermes-agent" };
+        const hermesOpt = new Option(
+          "Hermes Agent — " + hermes.model + (hermes.available ? "" : " (контейнер не запущен)"),
+          "hermes_agent"
+        );
+        hermesOpt.disabled = !hermes.available;
+        modelSelect.replaceChildren(defaultOpt, hermesOpt, localOpt);
         if (modelProfile === "local" && !status.local.available) modelProfile = "default";
+        if (modelProfile === "hermes_agent" && !hermes.available) modelProfile = "default";
         modelSelect.value = modelProfile;
       }
 
@@ -818,7 +826,7 @@
       }
 
       modelSelect.addEventListener("change", () => {
-        modelProfile = modelSelect.value === "local" ? "local" : "default";
+        modelProfile = MODEL_PROFILES.includes(modelSelect.value) ? modelSelect.value : "default";
         storeSet("mts_model_profile", modelProfile);
       });
 

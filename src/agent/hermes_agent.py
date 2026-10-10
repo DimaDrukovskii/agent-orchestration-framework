@@ -18,7 +18,7 @@ from src.agent.hermes_prompts import HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
 # провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
-OPENAI_COMPAT_PROVIDERS = ("polza", "local")
+OPENAI_COMPAT_PROVIDERS = ("polza", "local", "hermes_agent")
 MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агента
 CLOSING_PROMPT = "Коротко скажи абоненту, что происходит дальше (своими словами, не как бот)."
 
@@ -30,7 +30,14 @@ class HermesAgent:
         if self.provider in OPENAI_COMPAT_PROVIDERS:
             from openai import AsyncOpenAI
 
-            if self.provider == "local":
+            if self.provider == "hermes_agent":
+                self.client = AsyncOpenAI(
+                    api_key=settings.hermes_agent_api_key or "none",
+                    base_url=settings.hermes_agent_base_url,
+                    timeout=settings.hermes_agent_timeout_seconds,
+                )
+                self.model = settings.hermes_agent_model
+            elif self.provider == "local":
                 self.client = AsyncOpenAI(
                     api_key=settings.local_api_key,
                     base_url=settings.local_base_url,
@@ -164,13 +171,17 @@ class HermesAgent:
         for iteration in range(MAX_TOOL_ITERATIONS):
             logger.info(f"Hermes iteration {iteration + 1}, phone={mask_phone(caller_phone)}")
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                max_tokens=600,
-                temperature=settings.llm_temperature,
-                messages=[{"role": "system", "content": HERMES_SYSTEM_PROMPT}] + working_messages,
-                tools=TOOLS_SCHEMA_OPENAI,
-            )
+            request: Dict[str, Any] = {
+                "model": self.model,
+                "max_tokens": 600,
+                "temperature": settings.llm_temperature,
+                "messages": [{"role": "system", "content": HERMES_SYSTEM_PROMPT}] + working_messages,
+            }
+            # Hermes Agent ведёт свой цикл со своими инструментами и наши tools
+            # не вызывает — схему ему не отправляем (инструменты МТС: отдельный шаг).
+            if self.provider != "hermes_agent":
+                request["tools"] = TOOLS_SCHEMA_OPENAI
+            response = await self.client.chat.completions.create(**request)
 
             choice = response.choices[0]
             msg = choice.message

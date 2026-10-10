@@ -18,7 +18,7 @@ _agents: Dict[str, HermesAgent] = {}  # профили кроме дефолтн
 
 
 def agent_for(model_profile: Optional[str]) -> HermesAgent:
-    """"default"/None — модель из LLM_PROVIDER, "local" — локальный сервер."""
+    """"default"/None — LLM_PROVIDER, "local" — локальный сервер, "hermes_agent" — контейнер Hermes Agent."""
     if model_profile in (None, "default"):
         return hermes
     if model_profile not in _agents:
@@ -33,7 +33,7 @@ class HermesDialogRequest(BaseModel):
     session_id: str
     caller_phone: str
     user_message: str
-    model_profile: Optional[Literal["default", "local"]] = None
+    model_profile: Optional[Literal["default", "local", "hermes_agent"]] = None
 
 
 class HermesDialogResponse(BaseModel):
