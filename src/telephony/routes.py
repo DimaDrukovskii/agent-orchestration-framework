@@ -82,8 +82,13 @@ async def transcribe_wav(wav: bytes) -> str:
     return (await stt_service.transcribe(wav, "audio/wav"))["text"]
 
 
-async def run_turn(session_id: str, caller: str, text: str):
-    return await dialog.run_turn(session_id, caller, text)
+async def stream_turn(session_id: str, caller: str, text: str):
+    async for event in dialog.run_turn_stream(session_id, caller, text, settings.telephony_model_profile):
+        yield event
+
+
+async def mark_interrupted(session_id: str, caller: str, user_text: str, spoken: str, committed: bool) -> None:
+    await dialog.mark_interrupted(session_id, caller, user_text, spoken, committed)
 
 
 def build_pipeline(ws: WebSocket, send_lock: asyncio.Lock, stream_sid: str, call_sid: str) -> Pipeline:
@@ -107,7 +112,8 @@ def build_pipeline(ws: WebSocket, send_lock: asyncio.Lock, stream_sid: str, call
 
     return Pipeline(
         transcribe=transcribe_wav,
-        run_turn=run_turn,
+        stream_turn=stream_turn,
+        mark_interrupted=mark_interrupted,
         synthesize=synthesize_mulaw,
         send_audio=send_audio,
         clear_audio=clear_audio,

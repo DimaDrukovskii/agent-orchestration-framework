@@ -5,10 +5,13 @@
 уходит в колбэки Pipeline (`send_audio`, `clear_audio`, `end_call`). Поэтому он целиком проверяется
 тестами без телефона, а под другого провайдера (SIP, Exolve) меняется только слой в src/telephony/routes.py.
 
-Что умеет:
-  * определяет конец реплики по паузе (EndpointDetector), подмешивает реплики, если абонент продолжил;
-  * абонент перебил агента: озвучка обрывается (clear), обработка начинается заново;
-  * озвучка фраза за фразой: первая фраза уходит, пока остальные ещё синтезируются;
+Что умеет (разговор как у человека, а не «услышал, обработал, ответил»):
+  * определяет конец реплики по паузе (EndpointDetector); абонент добавил или уточнил, пока агент думал:
+    незаконченный ответ отменяется, реплики склеиваются и агент отвечает на всё сразу;
+  * агент говорит потоком: фраза уходит в озвучку, как только модель её сказала, не дожидаясь конца ответа;
+  * думает дольше telephony_filler_after_ms: сам говорит «секунду» (фразы из telephony.json, fillers);
+  * абонент перебил: озвучка обрывается (clear), а в историю попадает только услышанная часть ответа
+    с пометкой [абонент перебил], чтобы агент отреагировал на вставку, а не повторял всё заново;
   * молчание абонента: «Вы меня слышите?», затем прощание; потолок длины звонка;
   * перевод на человека по `transfer` из диалога (номер отдела из tenants/<имя>/telephony.json).
 """
@@ -17,7 +20,7 @@ import asyncio
 import time
 from array import array
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from src.config import settings
 from src.services.analytics import session_var
@@ -34,7 +37,8 @@ class Pipeline:
     """Всё внешнее, что нужно звонку. В боевом режиме собирается в routes.py, в тестах подменяется."""
 
     transcribe: Callable[[bytes], Awaitable[str]]  # WAV 16 кГц -> текст
-    run_turn: Callable[[str, str, str], Awaitable[Dict[str, Any]]]  # (session_id, caller, text) -> ход диалога
+    stream_turn: Callable[[str, str, str], AsyncIterator[Dict[str, Any]]]  # (session_id, caller, text) -> события хода
+    mark_interrupted: Callable[[str, str, str, str, bool], Awaitable[None]]  # что абонент успел услышать
     synthesize: Callable[[str], Awaitable[bytes]]  # текст -> µ-law 8 кГц
     send_audio: Callable[[bytes], Awaitable[None]]  # кусок µ-law абоненту
     clear_audio: Callable[[], Awaitable[None]]  # выбросить то, что ещё не доиграно
@@ -59,6 +63,10 @@ class CallSession:
         self._started = time.monotonic()
         self._idle_prompted = False
         self._errors = 0
+        self._said: List[Tuple[str, float, float]] = []  # фразы ответа: (текст, когда начнёт звучать, длительность)
+        self._turn_text = ""  # реплика абонента, на которую идёт текущий ответ
+        self._turn_committed = False  # ответ дошёл до конца и сохранён в историю
+        self._filler_index = 0
         self.closed = False
 
     # --- жизненный цикл -------------------------------------------------------------------------
@@ -102,12 +110,37 @@ class CallSession:
             elif event == "end" and utterance is not None:
                 self._queue.put_nowait(utterance)
 
+    def _heard(self, now: float) -> str:
+        """Что абонент успел услышать из ответа к моменту now: целые фразы и начало недосказанной."""
+        parts: List[str] = []
+        for text, start, duration in self._said:
+            if start > now:
+                break
+            if start + duration <= now or duration <= 0:
+                parts.append(text)
+                continue
+            words = text.split()
+            keep = int(len(words) * (now - start) / duration)
+            if keep:
+                parts.append(" ".join(words[:keep]) + "…")
+            break
+        return " ".join(parts)
+
     async def _interrupt(self) -> None:
-        """Абонент перебил: оборвать озвучку и всё, что агент ещё собирался сказать."""
+        """Абонент перебил: оборвать озвучку и ответ, записать в историю только услышанное."""
+        heard = self._heard(time.monotonic())
         self._playback_end = 0.0
         await self.p.clear_audio()
-        if self._respond_task and not self._respond_task.done():
-            self._respond_task.cancel()
+        task = self._respond_task
+        if task and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if self._turn_text:
+            await self.p.mark_interrupted(self.call_sid, self.caller, self._turn_text, heard, self._turn_committed)
+            if heard or self._turn_committed:
+                self._pending.clear()  # реплика абонента теперь в истории
+            self._turn_text = ""
+        self._said = []
 
     # --- распознавание и ответ ------------------------------------------------------------------
 
@@ -132,24 +165,81 @@ class CallSession:
 
     async def _respond(self) -> None:
         text = " ".join(self._pending)
+        self._turn_text, self._turn_committed, self._said = text, False, []
+        speech: "asyncio.Queue[Optional[tuple]]" = asyncio.Queue()
+        jobs: List[asyncio.Task] = []
+        first_audio = asyncio.Event()
+        player = asyncio.create_task(self._player(speech, first_audio))
+        filler = asyncio.create_task(self._filler(first_audio))
+        turn: Optional[Dict[str, Any]] = None
+        failed = False
         try:
-            turn = await self.p.run_turn(self.call_sid, self.caller, text)
+            async for event in self.p.stream_turn(self.call_sid, self.caller, text):
+                if event["type"] == "sentence":
+                    job = asyncio.create_task(self.p.synthesize(event["text"]))
+                    jobs.append(job)
+                    speech.put_nowait((event["text"], job))
+                elif event["type"] == "done":
+                    turn = event
+                    self._pending.clear()  # ход сохранён в историю: эти реплики больше не нужны
+                    self._turn_committed = True
+            speech.put_nowait(None)
+            await player
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.error(f"call dialog failed: {type(e).__name__}")
+            failed = True
+        finally:
+            for task in [filler, player, *jobs]:
+                if not task.done():
+                    task.cancel()
+        if failed:
             self._errors += 1
             if self._errors >= MAX_ERRORS_IN_A_ROW:
                 await self._finish(self.p.phrases["transfer_unavailable"])
             else:
                 await self._say(self.p.phrases["error_prompt"])
             return
-        self._pending.clear()  # ход записан в историю: эти реплики больше не нужны
         self._errors = 0
-        if turn.get("response"):
-            await self._say(turn["response"])
-        if turn.get("transfer"):
+        if turn and turn.get("transfer"):
             await self._transfer(turn["transfer"])
+
+    async def _player(self, speech: "asyncio.Queue[Optional[tuple]]", first_audio: asyncio.Event) -> None:
+        """Воспроизводить фразы ответа по порядку, по мере готовности озвучки."""
+        while True:
+            item = await speech.get()
+            if item is None:
+                return
+            text, job = item
+            try:
+                mulaw = await job
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"call tts failed: {type(e).__name__}")
+                continue  # одну фразу пропускаем, остальные говорим
+            first_audio.set()
+            await self._play(mulaw, text)
+
+    async def _filler(self, first_audio: asyncio.Event) -> None:
+        """Агент думает слишком долго: сказать «секунду», как это сделал бы человек."""
+        try:
+            await asyncio.wait_for(first_audio.wait(), settings.telephony_filler_after_ms / 1000)
+            return
+        except asyncio.TimeoutError:
+            pass
+        fillers = self.p.phrases.get("fillers") or []
+        if not fillers:
+            return
+        phrase = fillers[self._filler_index % len(fillers)]
+        self._filler_index += 1
+        try:
+            await self._play(await self.p.synthesize(phrase))  # без текста: в историю и «услышанное» не входит
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"call filler failed: {type(e).__name__}")
 
     # --- озвучка --------------------------------------------------------------------------------
 
@@ -171,11 +261,14 @@ class CallSession:
                     job.cancel()
             self._last_activity = time.monotonic()
 
-    async def _play(self, mulaw: bytes) -> None:
+    async def _play(self, mulaw: bytes, text: Optional[str] = None) -> None:
         if not mulaw:
             return
-        now = time.monotonic()
-        self._playback_end = max(self._playback_end, now) + audio.duration_seconds(mulaw)
+        starts = max(self._playback_end, time.monotonic())
+        duration = audio.duration_seconds(mulaw)
+        if text:
+            self._said.append((text, starts, duration))
+        self._playback_end = starts + duration
         await self.p.send_audio(mulaw)
 
     async def _wait_playback(self) -> None:

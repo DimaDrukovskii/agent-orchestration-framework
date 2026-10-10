@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     local_api_key: str = "local"  # серверу обычно всё равно, но поле обязательно
     local_timeout_seconds: int = 120  # локальная модель на ноутбуке отвечает медленнее облака
 
+    # Hermes Agent (Nous Research) как «мозг»: его OpenAI-совместимый сервер (порт 8642). Свой цикл, свои
+    # инструменты и MCP настраиваются на его стороне; наши tools ему не отправляются. Профиль "hermes_agent".
+    hermes_agent_base_url: str = "http://hermes:8642/v1"
+    hermes_agent_api_key: str = ""
+    hermes_agent_model: str = "hermes-agent"
+    hermes_agent_timeout_seconds: int = 120
+
     # Контроль расходов на LLM. Почти вся цена запроса — входные токены
     # (системный промпт + схемы инструментов + история), поэтому:
     #  - llm_max_tokens: потолок ответа (телефонная реплика короткая; он же
@@ -71,6 +78,8 @@ class Settings(BaseSettings):
     telephony_max_concurrent_calls: int = 100  # больше одновременных звонков не принимаем
     telephony_max_call_seconds: int = 600  # потолок длины звонка (защита бюджета)
     telephony_silence_end_ms: int = 700  # пауза, после которой реплика абонента считается законченной
+    telephony_model_profile: str = "default"  # «мозг» звонка: default | local | hermes_agent
+    telephony_filler_after_ms: int = 900  # агент молчит дольше: сам говорит «секунду» (fillers в telephony.json)
     telephony_idle_prompt_seconds: int = 12  # молчит абонент: «Вы меня слышите?»
     telephony_idle_hangup_seconds: int = 30  # молчит дальше: прощаемся и кладём трубку
 

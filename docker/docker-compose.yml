@@ -31,6 +31,8 @@ services:
       - CACHE_BACKEND=${CACHE_BACKEND:-sqlite}
       - STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite}
       - REDIS_URL=redis://redis:6379
+      - HERMES_AGENT_BASE_URL=${HERMES_AGENT_BASE_URL:-http://hermes:8642/v1}
+      - HERMES_AGENT_API_KEY=${HERMES_API_KEY:-local-hermes-key-change-me-2026}
       - TELEPHONY_ENABLED=${TELEPHONY_ENABLED:-false}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
@@ -44,6 +46,22 @@ services:
       - ../data:/app/data
       - ../tenants:/app/tenants
     command: uvicorn src.main:app --host 0.0.0.0 --reload
+
+  # Hermes Agent (Nous Research) как «мозг» звонка: профиль model_profile="hermes_agent". Не запускается
+  # по умолчанию: docker compose --profile hermes up -d. Порт только на localhost хоста: агент умеет
+  # выполнять команды внутри своего контейнера, наружу его выставлять нельзя. MCP-инструменты
+  # подключаются в его собственном config.yaml (docs/website_side_bar/LLM_CONNECTOR.md).
+  hermes:
+    profiles: ["hermes"]
+    build:
+      context: ./hermes
+    init: true
+    ports:
+      - "127.0.0.1:8642:8642"
+    environment:
+      - POLZA_API_KEY=${POLZA_API_KEY:-}
+      - HERMES_MODEL=${POLZA_MODEL:-anthropic/claude-haiku-5.5}
+      - API_SERVER_KEY=${HERMES_API_KEY:-local-hermes-key-change-me-2026}
 
   redis:
     image: redis:7-alpine

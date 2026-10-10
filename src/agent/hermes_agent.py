@@ -10,15 +10,16 @@ settings.llm_provider:
 """
 
 import json
-from typing import List, Dict, Any, AsyncGenerator, Optional
+import re
+from typing import List, Dict, Any, AsyncGenerator, Optional, Tuple
 from src.config import settings
 from src.services.analytics import analytics
 from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context, load_site_map, open_section_tool
-from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_LINKS_RULE, HERMES_SYSTEM_PROMPT
+from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_INTERRUPT_RULE, HERMES_LINKS_RULE, HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
 # провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
-OPENAI_COMPAT_PROVIDERS = ("polza", "local")
+OPENAI_COMPAT_PROVIDERS = ("polza", "local", "hermes_agent")
 MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агента
 CLOSING_PROMPT = "Коротко скажи абоненту, что происходит дальше (своими словами, не как бот)."
 
@@ -84,6 +85,32 @@ def log_usage(response: Any, model: str) -> None:
     )
 
 
+SENTENCE_END = re.compile(r"(?<=[.!?…])[\"»)]*\s+")
+
+
+def pop_sentences(buffer: str) -> Tuple[List[str], str]:
+    """Отделить от потока текста законченные предложения: (готовые, недописанный хвост)."""
+    parts = SENTENCE_END.split(buffer)
+    return [p.strip() for p in parts[:-1] if p.strip()], parts[-1]
+
+
+def new_turn_state() -> Dict[str, Any]:
+    return {"pending_transfer": None, "chat": [], "links": []}
+
+
+def apply_tool(name: str, tool_input: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
+    """Выполнить инструмент и учесть его побочный результат (перевод, чат, ссылка) в состоянии реплики."""
+    logger.info(f"Tool call: {name}({tool_input})")
+    result = execute_tool(name, tool_input)
+    if name == "transfer_to_department":
+        state["pending_transfer"] = result
+    elif name == "send_to_chat" and result.get("text"):
+        state["chat"].append(result["text"])
+    elif name == "show_section" and result.get("url"):
+        state["links"].append({"title": result["title"], "url": result["url"]})
+    return result
+
+
 class HermesAgent:
     def __init__(self, provider: Optional[str] = None):
         self.provider = provider or settings.llm_provider
@@ -91,7 +118,15 @@ class HermesAgent:
         if self.provider in OPENAI_COMPAT_PROVIDERS:
             from openai import AsyncOpenAI
 
-            if self.provider == "local":
+            if self.provider == "hermes_agent":
+                # Настоящий Hermes Agent: свой цикл и свои инструменты (в том числе MCP), наши tools ему не шлём
+                self.client = AsyncOpenAI(
+                    api_key=settings.hermes_agent_api_key or "none",
+                    base_url=settings.hermes_agent_base_url,
+                    timeout=settings.hermes_agent_timeout_seconds,
+                )
+                self.model = settings.hermes_agent_model
+            elif self.provider == "local":
                 self.client = AsyncOpenAI(
                     api_key=settings.local_api_key,
                     base_url=settings.local_base_url,
@@ -124,7 +159,7 @@ class HermesAgent:
 
     def system_message(self) -> Dict[str, Any]:
         """Системный промпт; для Claude на Polza помечается к кэшированию (read = 0.1x цены)."""
-        prompt = (HERMES_SYSTEM_PROMPT + (HERMES_CHAT_RULE if settings.chat_enabled else "")
+        prompt = (HERMES_SYSTEM_PROMPT + HERMES_INTERRUPT_RULE + (HERMES_CHAT_RULE if settings.chat_enabled else "")
                   + (HERMES_LINKS_RULE if load_site_map() else ""))
         cacheable = (
             settings.llm_prompt_cache
@@ -233,6 +268,124 @@ class HermesAgent:
             "pending_transfer": pending_transfer
         }
 
+    # ---- Потоковый ответ: фраза уходит абоненту, как только модель её сказала ----
+
+    async def run_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        caller_phone: str,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Тот же цикл «модель, инструмент, модель», но ответ идёт потоком событий:
+          {"type": "sentence", "text": ...}  законченная фраза, её можно озвучивать сразу
+          {"type": "tool", "name": ...}      агент пошёл за данными (повод сказать «секунду»)
+          {"type": "done", "result": {...}}  итог в том же виде, что у run()
+        Так агент начинает говорить, не дожидаясь конца своего ответа, и может оговорить действие
+        («сейчас посмотрю») до вызова инструмента. Провайдеры вне OpenAI-совместимых отдают ответ целиком.
+        """
+        if self.provider not in OPENAI_COMPAT_PROVIDERS:
+            result = await self.run(messages, caller_phone)
+            for sentence in pop_sentences(result["response"] + "\n")[0]:
+                yield {"type": "sentence", "text": sentence}
+            yield {"type": "done", "result": result}
+            return
+
+        working = messages.copy()
+        state = new_turn_state()
+        spoken: List[str] = []  # всё, что агент сказал за реплику (включая слова перед вызовом инструмента)
+
+        if count_user_turns(working) > settings.llm_max_turns:
+            working.append({"role": "assistant", "content": TURN_CAP_REPLY})
+            yield {"type": "sentence", "text": TURN_CAP_REPLY}
+            yield {"type": "done", "result": {"response": TURN_CAP_REPLY, "messages": working, "pending_transfer": None, "chat": [], "links": []}}
+            return
+
+        preretrieval = settings.llm_kb_preretrieval and self.provider != "hermes_agent"
+        snippet = ""
+        if preretrieval:
+            last_user = next((m["content"] for m in reversed(working)
+                              if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+            snippet = kb_context(last_user)
+        tools = [t for t in TOOLS_SCHEMA_OPENAI
+                 if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
+                 and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
+        tools += open_section_tool()
+
+        for iteration in range(MAX_TOOL_ITERATIONS):
+            request: Dict[str, Any] = {
+                "model": self.model,
+                "max_tokens": settings.llm_max_tokens,
+                "temperature": settings.llm_temperature,
+                "stream": True,
+                "messages": [self.system_message()]
+                + with_kb_context(trim_history(working, settings.llm_max_history_messages), snippet),
+            }
+            if self.provider != "hermes_agent" and not state["pending_transfer"]:
+                request["tools"] = tools  # после перевода инструменты не нужны: модель только прощается
+            extra = self._extra_body().get("extra_body", {})
+            request["extra_body"] = {**extra, "stream_options": {"include_usage": True}}
+
+            buffer, text, calls, finish = "", "", {}, None
+            async for chunk in await self.client.chat.completions.create(**request):
+                if getattr(chunk, "usage", None) is not None:
+                    log_usage(chunk, self.model)
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = choice.delta
+                finish = choice.finish_reason or finish
+                for piece in getattr(delta, "tool_calls", None) or []:
+                    slot = calls.setdefault(piece.index, {"id": "", "name": "", "arguments": ""})
+                    slot["id"] = piece.id or slot["id"]
+                    if piece.function:
+                        slot["name"] += piece.function.name or ""
+                        slot["arguments"] += piece.function.arguments or ""
+                if delta.content:
+                    buffer += delta.content
+                    text += delta.content
+                    ready, buffer = pop_sentences(buffer)
+                    for sentence in ready:
+                        spoken.append(sentence)
+                        yield {"type": "sentence", "text": sentence}
+            if buffer.strip() and not calls:
+                spoken.append(buffer.strip())
+                yield {"type": "sentence", "text": buffer.strip()}
+            elif buffer.strip():  # слова перед вызовом инструмента тоже произносим
+                spoken.append(buffer.strip())
+                yield {"type": "sentence", "text": buffer.strip()}
+
+            if not calls:
+                final = " ".join(spoken).strip()
+                working.append({"role": "assistant", "content": final})
+                yield {"type": "done", "result": {
+                    "response": final, "messages": working, "pending_transfer": state["pending_transfer"],
+                    "chat": state["chat"], "links": state["links"]}}
+                return
+
+            ordered = [calls[i] for i in sorted(calls)]
+            working.append({
+                "role": "assistant",
+                "content": text or None,
+                "tool_calls": [
+                    {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"] or "{}"}}
+                    for c in ordered
+                ],
+            })
+            for call in ordered:
+                yield {"type": "tool", "name": call["name"]}
+                try:
+                    args = json.loads(call["arguments"] or "{}")
+                except ValueError:
+                    args = {}
+                result = apply_tool(call["name"], args, state)
+                working.append({"role": "tool", "tool_call_id": call["id"], "content": str(result)})
+
+        final = " ".join(spoken).strip() or TURN_CAP_REPLY
+        working.append({"role": "assistant", "content": final})
+        yield {"type": "done", "result": {
+            "response": final, "messages": working, "pending_transfer": state["pending_transfer"],
+            "chat": state["chat"], "links": state["links"]}}
+
     # ---- OpenAI-совместимый шлюз (polza.ai и аналогичные) ----
 
     async def _run_openai(
@@ -246,16 +399,17 @@ class HermesAgent:
         результаты — отдельные сообщения с role="tool".
         """
         working_messages = messages.copy()  # полная история: идёт в хранилище и транскрипт
+        state = new_turn_state()  # перевод, чат и ссылки, которые накопили инструменты за реплику
         pending_transfer = None
-        chat_messages: List[str] = []  # что агент отправил абоненту в чат за эту реплику
-        links: List[Dict[str, str]] = []  # разделы сайта, которые агент показал кнопками
+        chat_messages: List[str] = state["chat"]  # что агент отправил абоненту в чат за эту реплику
+        links: List[Dict[str, str]] = state["links"]  # разделы сайта, которые агент показал кнопками
 
         if count_user_turns(working_messages) > settings.llm_max_turns:
             logger.warning(f"Turn cap reached ({settings.llm_max_turns}), phone={mask_phone(caller_phone)}")
             working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
             return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
 
-        preretrieval = settings.llm_kb_preretrieval
+        preretrieval = settings.llm_kb_preretrieval and self.provider != "hermes_agent"
         snippet = ""
         if preretrieval:
             last_user = next((m["content"] for m in reversed(working_messages)
@@ -276,7 +430,8 @@ class HermesAgent:
                 "messages": [self.system_message()]
                 + with_kb_context(trim_history(working_messages, settings.llm_max_history_messages), snippet),
             }
-            request["tools"] = tools
+            if self.provider != "hermes_agent":
+                request["tools"] = tools
             request.update(self._extra_body())
             response = await self.client.chat.completions.create(**request)
             log_usage(response, self.model)
@@ -303,15 +458,8 @@ class HermesAgent:
 
             for tool_call in msg.tool_calls:
                 tool_input = json.loads(tool_call.function.arguments)
-                logger.info(f"Tool call: {tool_call.function.name}({tool_input})")
-                result = execute_tool(tool_call.function.name, tool_input)
-
-                if tool_call.function.name == "transfer_to_department":
-                    pending_transfer = result
-                elif tool_call.function.name == "send_to_chat" and result.get("text"):
-                    chat_messages.append(result["text"])
-                elif tool_call.function.name == "show_section" and result.get("url"):
-                    links.append({"title": result["title"], "url": result["url"]})
+                result = apply_tool(tool_call.function.name, tool_input, state)
+                pending_transfer = state["pending_transfer"]
 
                 working_messages.append({
                     "role": "tool",

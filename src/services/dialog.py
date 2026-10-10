@@ -178,3 +178,69 @@ async def run_turn(
         "links": result.get("links", []),
         "persisted": persisted,
     }
+
+
+INTERRUPT_MARK = " [абонент перебил]"
+
+
+async def run_turn_stream(
+    session_id: str,
+    caller_phone: str,
+    user_message: str,
+    model_profile: Optional[str] = None,
+):
+    """
+    Ход диалога потоком: события агента (фразы, вызовы инструментов) уходят каналу сразу, а в конце,
+    когда ответ закончен, история сохраняется, звонок записывается и доставляется чат. Последнее событие:
+    {"type": "done", **turn} в том же виде, что у run_turn(). Если канал оборвал поток (абонент перебил),
+    ничего не сохраняется: канал сам вызовет mark_interrupted() с тем, что абонент успел услышать.
+    """
+    history = await _get_session(session_id)
+    history.append({"role": "user", "content": user_message})
+    async for event in agent_for(model_profile).run_stream(history, caller_phone):
+        if event["type"] != "done":
+            yield event
+            continue
+        result = event["result"]
+        await _save_session(session_id, caller_phone, result["messages"])
+        persisted = await _persist_turn(
+            session_id=session_id,
+            caller_phone=caller_phone,
+            messages=result["messages"],
+            agent_response=result["response"],
+            pending_transfer=result["pending_transfer"],
+        )
+        chat = result.get("chat", [])
+        await _deliver_chat(session_id, chat)
+        yield {
+            "type": "done",
+            "response": result["response"],
+            "transfer": result["pending_transfer"],
+            "chat": chat,
+            "links": result.get("links", []),
+            "persisted": persisted,
+        }
+
+
+async def mark_interrupted(
+    session_id: str, caller_phone: str, user_message: str, spoken: str, committed: bool
+) -> None:
+    """
+    Абонент перебил агента: в историю должно попасть только то, что он реально услышал.
+      committed=True   ход уже сохранён целиком: последняя реплика агента заменяется услышанной частью;
+      committed=False  ход оборван до сохранения: добавляются реплика абонента и услышанная часть ответа
+                       (если агент ничего не успел сказать, не добавляется ничего, реплика останется в ожидании).
+    """
+    history = await _get_session(session_id)
+    note = (spoken.strip() + INTERRUPT_MARK).strip()
+    if committed:
+        for index in range(len(history) - 1, -1, -1):
+            msg = history[index]
+            if msg.get("role") == "assistant" and isinstance(msg.get("content"), str) and not msg.get("tool_calls"):
+                history[index] = {**msg, "content": note}
+                break
+    elif spoken.strip():
+        history.extend([{"role": "user", "content": user_message}, {"role": "assistant", "content": note}])
+    else:
+        return
+    await _save_session(session_id, caller_phone, history)

@@ -18,7 +18,7 @@ class HermesDialogRequest(BaseModel):
     session_id: str
     caller_phone: str
     user_message: str
-    model_profile: Optional[Literal["default", "local"]] = None
+    model_profile: Optional[Literal["default", "local", "hermes_agent"]] = None
 
 
 class HermesDialogResponse(BaseModel):

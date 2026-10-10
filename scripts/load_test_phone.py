@@ -29,10 +29,14 @@ def make_pipeline(counters):
         await asyncio.sleep(0.4)  # распознавание ~0,4 с
         return "вопрос"
 
-    async def run_turn(*a):
+    async def stream_turn(*a):
         counters["turns"] += 1
-        await asyncio.sleep(1.2)  # модель ~1,2 с
-        return {"response": "Ответ абоненту.", "transfer": None}
+        await asyncio.sleep(1.2)  # модель ~1,2 с до первой фразы
+        yield {"type": "sentence", "text": "Ответ абоненту."}
+        yield {"type": "done", "response": "Ответ абоненту.", "transfer": None}
+
+    async def mark(*a):
+        pass
 
     async def synth(text):
         await asyncio.sleep(0.5)  # озвучка ~0,5 с
@@ -46,7 +50,7 @@ def make_pipeline(counters):
 
     phrases = {"greeting": "Здравствуйте", "goodbye": "Пока", "idle_prompt": "Вы тут?", "error_prompt": "Сбой",
                "transfer_prompt": "x", "transfer_unavailable": "x", "transfer_numbers": {}}
-    return Pipeline(transcribe, run_turn, synth, noop, noop, end, lambda n: noop(), phrases)
+    return Pipeline(transcribe, stream_turn, mark, synth, noop, noop, end, lambda n: noop(), phrases)
 
 
 async def one_call(index, counters):

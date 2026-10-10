@@ -40,6 +40,9 @@
 | `TWILIO_ACCOUNT_SID` | `""` | только для перевода звонка на человека |
 | `TWILIO_VALIDATE_SIGNATURE` | `true` | `false` только для локальной отладки |
 | `TELEPHONY_MAX_CONCURRENT_CALLS` / `TELEPHONY_MAX_CALL_SECONDS` | `100` / `600` | потолки числа звонков и длины звонка |
+| `TELEPHONY_MODEL_PROFILE` | `default` | «мозг» звонка: `default` (LLM_PROVIDER), `local`, `hermes_agent` |
+| `TELEPHONY_FILLER_AFTER_MS` | `900` | агент молчит дольше: сам говорит «секунду» (фразы `fillers` в `telephony.json`) |
+| `HERMES_AGENT_BASE_URL` / `HERMES_AGENT_API_KEY` / `HERMES_AGENT_MODEL` | `http://hermes:8642/v1` / `""` / `hermes-agent` | Hermes Agent как «мозг» (`model_profile: hermes_agent`) |
 | `TELEPHONY_SILENCE_END_MS` | `700` | пауза, после которой реплика абонента считается законченной |
 | `TELEPHONY_IDLE_PROMPT_SECONDS` / `TELEPHONY_IDLE_HANGUP_SECONDS` | `12` / `30` | молчание абонента: переспросить, затем попрощаться |
 | `BENCHMARK_NAME` | `МТС Exolve, голосовой робот` | с чем сравнивается цена минуты на панели аналитики |

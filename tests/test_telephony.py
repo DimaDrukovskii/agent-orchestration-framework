@@ -141,15 +141,20 @@ def fakes(monkeypatch):
         calls["stt"].append(wav)
         return "сколько стоит тариф RED"
 
-    async def run_turn(session_id, caller, text):
+    async def stream_turn(session_id, caller, text):
         calls["turns"].append((session_id, caller, text))
-        return {"response": "Тариф стоит 1200 рублей.", "transfer": None, "chat": [], "links": [], "persisted": True}
+        yield {"type": "sentence", "text": "Тариф стоит 1200 рублей."}
+        yield {"type": "done", "response": "Тариф стоит 1200 рублей.", "transfer": None, "chat": [], "links": [], "persisted": True}
+
+    async def mark_interrupted(*args):
+        calls.setdefault("interrupted", []).append(args)
 
     async def synth(text):
         return reply_audio["mulaw"]
 
     monkeypatch.setattr(routes, "transcribe_wav", transcribe)
-    monkeypatch.setattr(routes, "run_turn", run_turn)
+    monkeypatch.setattr(routes, "stream_turn", stream_turn)
+    monkeypatch.setattr(routes, "mark_interrupted", mark_interrupted)
     monkeypatch.setattr(routes, "synthesize_mulaw", synth)
     monkeypatch.setattr(settings, "telephony_enabled", True)
     monkeypatch.setattr(settings, "twilio_validate_signature", False)
@@ -233,12 +238,16 @@ def _pipeline(turn, numbers):
         log["transferred"].append(number)
         return True
 
-    async def run_turn(*a):
-        return turn
+    async def stream_turn(*a):
+        yield {"type": "sentence", "text": turn["response"]}
+        yield {"type": "done", **turn}
+
+    async def mark(*a):
+        log.setdefault("marked", []).append(a)
 
     phrases = {"greeting": "Привет", "goodbye": "Пока", "idle_prompt": "Вы тут?", "error_prompt": "Сбой",
                "transfer_prompt": "Соединяю", "transfer_unavailable": "Передала, свяжутся", "transfer_numbers": numbers}
-    return Pipeline(transcribe=lambda wav: noop(), run_turn=run_turn, synthesize=synth, send_audio=noop,
+    return Pipeline(transcribe=lambda wav: noop(), stream_turn=stream_turn, mark_interrupted=mark, synthesize=synth, send_audio=noop,
                     clear_audio=noop, end_call=end, transfer_call=transfer, phrases=phrases), log
 
 
