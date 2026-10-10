@@ -85,25 +85,23 @@ def silence(seconds: float) -> array:
 
 
 async def speak(text: str, voice: str = "") -> array:
+    """Озвучка с долгими повторами: сеть иногда пропадает на минуту. Если так и не вышло, фраза заменяется паузой."""
     old = settings.tts_voice_id
     if voice:
         settings.tts_voice_id = voice
-    mp3 = None
     try:
-        for attempt in range(4):
+        for attempt in range(8):
             try:
                 mp3 = await tts_service.synthesize(text)
-                break
+                if mp3:
+                    return audio.mulaw_to_pcm16(await asyncio.to_thread(audio.audio_to_mulaw, mp3))
             except Exception as e:
-                if attempt == 3:
-                    raise
                 print(f"  озвучка, попытка {attempt + 1} не удалась ({type(e).__name__}), повтор")
-                await asyncio.sleep(2 + attempt * 3)
+            await asyncio.sleep(min(3 * (attempt + 1), 20))
     finally:
         settings.tts_voice_id = old
-    if not mp3:
-        raise RuntimeError("озвучка не настроена")
-    return audio.mulaw_to_pcm16(await asyncio.to_thread(audio.audio_to_mulaw, mp3))
+    print(f"  ФРАЗА НЕ ОЗВУЧЕНА: {text[:50]}")
+    return silence(max(1.0, len(text) / 14))
 
 
 def mmss(seconds: float) -> str:
@@ -131,6 +129,17 @@ async def main():
         pcm.extend(silence(seconds))
         clock = len(pcm) / RATE
 
+    out = f"/app/data/{args.out}"
+
+    def save():
+        with wave.open(out + ".wav", "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(RATE)
+            w.writeframes(pcm.tobytes())
+        with open(out + ".txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(log) + "\n")
+
     target = args.minutes * 60
     add(await speak(phrases["greeting"]), "Алина", phrases["greeting"])
     sid = f"long-{int(time.time())}"
@@ -139,6 +148,7 @@ async def main():
     for index, (text, probe) in enumerate(body):
         if clock >= target - 25 and not probe:
             break  # время почти вышло: переходим к прощанию
+        save()  # контрольное сохранение: при сбое останется всё, что уже записано
         gap(0.5)
         add(await speak(text, CALLER_VOICE), "Абонент", text)
         gap(END_OF_SPEECH_S)
@@ -156,6 +166,7 @@ async def main():
             if failures >= 3:
                 log.append("           ПРОГОН ОСТАНОВЛЕН: три сбоя подряд (проверьте баланс и доступ к модели)")
                 break
+            await asyncio.sleep(15)  # сеть могла пропасть ненадолго
             gap(1.0)
             add(await speak(phrases["error_prompt"]), "Алина (сбой)", phrases["error_prompt"])
             continue
@@ -193,12 +204,7 @@ async def main():
         gap(0.7)
         add(await speak(phrases["goodbye"]), "Алина", phrases["goodbye"])
 
-    out = f"/app/data/{args.out}"
-    with wave.open(out + ".wav", "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(RATE)
-        w.writeframes(pcm.tobytes())
+    save()
 
     notes = (await dialog._get_notes(sid))["text"]
     report = [
@@ -211,8 +217,8 @@ async def main():
         report.append(f"  {'да ' if ok else 'НЕТ'} [{when}] {question[:70]}\n       → {answer[:160]}")
     report += ["", f"латиница в речи агента: {len(latin)} случаев"] + [f"  [{w}] {a[:120]}" for w, a in latin[:5]]
     report += ["", f"ЗАМЕТКИ АГЕНТА О ЗВОНКЕ: {notes or '(не набрались)'}"]
-    with open(out + ".txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(log + report) + "\n")
+    log.extend(report)
+    save()
     print("\n".join(report))
     print(f"\nзапись: {out}.wav, {mmss(clock)}")
 

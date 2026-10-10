@@ -5,6 +5,9 @@ services:
       dockerfile: docker/Dockerfile
     ports:
       - "8000:8000"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8  # встроенный DNS Docker на хосте с плавающей сетью иногда не резолвит polza.ai
     environment:
       - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}

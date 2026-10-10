@@ -19,6 +19,7 @@
 TTSService.synthesize() — единая точка входа независимо от провайдера.
 """
 
+import asyncio
 import base64
 from collections import OrderedDict
 from typing import Any, Dict, Optional, Tuple
@@ -33,6 +34,7 @@ class TTSNotConfigured(Exception):
     """tts_provider="none" или провайдер ещё не реализован (yandex)."""
 
 
+TTS_NETWORK_RETRIES = 2
 POLZA_DEFAULT_MODEL = "elevenlabs/text-to-speech-multilingual-v2"
 POLZA_DEFAULT_VOICE = "Sarah"
 ELEVENLABS_DEFAULT_MODEL = "eleven_multilingual_v2"
@@ -118,17 +120,25 @@ class TTSService:
             raise TTSNotConfigured("POLZA_API_KEY не задан для TTS_PROVIDER=polza")
 
         url, headers, payload = self.build_polza_request(text)
-        try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                body = response.json()
-                usage = body.get("usage") or {}
-                analytics.record("tts", usage.get("cost_rub", body.get("cost_rub")), model=payload["model"], units=len(text))
-                return self.decode_polza_response(body)
-        except Exception as e:
-            logger.error(f"TTS (polza) error: {str(e)}")
-            raise
+        last_error: Exception = RuntimeError("TTS: нет попыток")
+        for attempt in range(TTS_NETWORK_RETRIES + 1):
+            try:
+                async with httpx.AsyncClient(timeout=20) as client:
+                    response = await client.post(url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    body = response.json()
+                    usage = body.get("usage") or {}
+                    analytics.record("tts", usage.get("cost_rub", body.get("cost_rub")), model=payload["model"], units=len(text))
+                    return self.decode_polza_response(body)
+            except httpx.TransportError as e:  # обрыв сети, DNS, таймаут: короткий повтор спасает фразу в звонке
+                last_error = e
+                logger.warning(f"TTS (polza) network error, attempt {attempt + 1}: {type(e).__name__}")
+                await asyncio.sleep(0.4 * (attempt + 1))
+            except Exception as e:
+                logger.error(f"TTS (polza) error: {str(e)}")
+                raise
+        logger.error(f"TTS (polza) gave up: {type(last_error).__name__}")
+        raise last_error
 
     async def _synthesize_elevenlabs(self, text: str) -> bytes:
         import httpx
