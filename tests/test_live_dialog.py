@@ -232,6 +232,27 @@ def test_agent_says_a_filler_when_the_answer_is_slow(monkeypatch):
     assert session._said and [t for t, _, _ in session._said] == ["Первая фраза.", "Вторая фраза."]  # филлер не в ответе
 
 
+def test_second_filler_when_the_agent_keeps_thinking(monkeypatch):
+    monkeypatch.setattr(settings, "telephony_filler_after_ms", 50)
+    monkeypatch.setattr(settings, "telephony_long_filler_after_ms", 50)
+    pipeline, log = _live_pipeline(SENTENCES + [DONE], delay=0.6)
+    pipeline.phrases["long_fillers"] = ["Ещё секунду, уточняю."]
+    session = CallSession("CA1", "+375", pipeline)
+    session._pending = ["вопрос"]
+    asyncio.run(session._respond())
+    assert log["said"][:2] == ["Секунду.", "Ещё секунду, уточняю."] and log["said"][2:] == ["Первая фраза.", "Вторая фраза."]
+
+
+def test_model_stuck_longer_than_the_limit_gets_an_apology_not_silence(monkeypatch):
+    monkeypatch.setattr(settings, "telephony_turn_timeout_seconds", 0.2)
+    monkeypatch.setattr(settings, "telephony_filler_after_ms", 5000)
+    pipeline, log = _live_pipeline(SENTENCES + [DONE], delay=2.0)
+    session = CallSession("CA1", "+375", pipeline)
+    session._pending = ["вопрос"]
+    asyncio.run(session._respond())
+    assert log["said"] == ["Сбой"] and session._errors == 1
+
+
 def test_no_filler_when_the_agent_answers_quickly(monkeypatch):
     monkeypatch.setattr(settings, "telephony_filler_after_ms", 500)
     pipeline, log = _live_pipeline(SENTENCES + [DONE], delay=0.0)

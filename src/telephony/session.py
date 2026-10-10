@@ -174,15 +174,16 @@ class CallSession:
         turn: Optional[Dict[str, Any]] = None
         failed = False
         try:
-            async for event in self.p.stream_turn(self.call_sid, self.caller, text):
-                if event["type"] == "sentence":
-                    job = asyncio.create_task(self.p.synthesize(event["text"]))
-                    jobs.append(job)
-                    speech.put_nowait((event["text"], job))
-                elif event["type"] == "done":
-                    turn = event
-                    self._pending.clear()  # ход сохранён в историю: эти реплики больше не нужны
-                    self._turn_committed = True
+            async with asyncio.timeout(settings.telephony_turn_timeout_seconds):  # потолок ожидания модели
+                async for event in self.p.stream_turn(self.call_sid, self.caller, text):
+                    if event["type"] == "sentence":
+                        job = asyncio.create_task(self.p.synthesize(event["text"]))
+                        jobs.append(job)
+                        speech.put_nowait((event["text"], job))
+                    elif event["type"] == "done":
+                        turn = event
+                        self._pending.clear()  # ход сохранён в историю: эти реплики больше не нужны
+                        self._turn_committed = True
             speech.put_nowait(None)
             await player
         except asyncio.CancelledError:
@@ -223,23 +224,26 @@ class CallSession:
             await self._play(mulaw, text)
 
     async def _filler(self, first_audio: asyncio.Event) -> None:
-        """Агент думает слишком долго: сказать «секунду», как это сделал бы человек."""
-        try:
-            await asyncio.wait_for(first_audio.wait(), settings.telephony_filler_after_ms / 1000)
-            return
-        except asyncio.TimeoutError:
-            pass
-        fillers = self.p.phrases.get("fillers") or []
-        if not fillers:
-            return
-        phrase = fillers[self._filler_index % len(fillers)]
-        self._filler_index += 1
-        try:
-            await self._play(await self.p.synthesize(phrase))  # без текста: в историю и «услышанное» не входит
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error(f"call filler failed: {type(e).__name__}")
+        """Агент думает слишком долго: сказать «угу, секунду», а если и дальше тихо, «ещё секунду», как человек."""
+        waits = (("fillers", settings.telephony_filler_after_ms), ("long_fillers", settings.telephony_long_filler_after_ms))
+        for key, wait_ms in waits:
+            try:
+                await asyncio.wait_for(first_audio.wait(), wait_ms / 1000)
+                return
+            except asyncio.TimeoutError:
+                pass
+            phrases = self.p.phrases.get(key) or []
+            if not phrases:
+                return
+            phrase = phrases[self._filler_index % len(phrases)]
+            self._filler_index += 1
+            try:
+                await self._play(await self.p.synthesize(phrase))  # без текста: в историю и «услышанное» не входит
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"call filler failed: {type(e).__name__}")
+                return
 
     # --- озвучка --------------------------------------------------------------------------------
 

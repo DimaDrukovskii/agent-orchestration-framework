@@ -79,7 +79,9 @@ class Settings(BaseSettings):
     telephony_max_call_seconds: int = 600  # потолок длины звонка (защита бюджета)
     telephony_silence_end_ms: int = 700  # пауза, после которой реплика абонента считается законченной
     telephony_model_profile: str = "default"  # «мозг» звонка: default | local | hermes_agent
-    telephony_filler_after_ms: int = 900  # агент молчит дольше: сам говорит «секунду» (fillers в telephony.json)
+    telephony_filler_after_ms: int = 1200  # агент молчит дольше: сам говорит «угу, секунду» (fillers в telephony.json)
+    telephony_long_filler_after_ms: int = 3000  # и всё ещё думает: «ещё секунду, уточняю» (long_fillers)
+    telephony_turn_timeout_seconds: int = 20  # модель молчит дольше: извиняемся и просим повторить, а не висим в тишине
     telephony_idle_prompt_seconds: int = 12  # молчит абонент: «Вы меня слышите?»
     telephony_idle_hangup_seconds: int = 30  # молчит дальше: прощаемся и кладём трубку
 
