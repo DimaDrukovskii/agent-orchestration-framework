@@ -34,7 +34,8 @@ POST /api/tts (Polza ElevenLabs) → звук в виджет
 | API | `src/api/hermes_routes.py` | HTTP-канал диалога, потоковая версия, история; ошибки провайдера → 503 с кодами |
 | | `src/api/stt_routes.py`, `tts_routes.py` | распознавание и озвучка |
 | | `src/api/tenant_routes.py`, `llm_routes.py`, `auth.py` | подписи клиента для виджета, доступные модели, `X-API-Key` |
-| Агент | `src/agent/hermes_agent.py` | цикл с инструментами, три провайдера (anthropic, polza, local), контроль расходов |
+| Агент | `src/agent/escalation.py` | очевидные просьбы о человеке (оператор, жалоба, спор по списанию) переводятся сразу, до модели |
+| | `src/agent/hermes_agent.py` | цикл с инструментами, четыре профиля (anthropic, polza, local, hermes_agent), контроль расходов |
 | | `src/agent/hermes_prompts.py`, `tools.py` | промпт из `tenants/`, инструменты и поиск по базе знаний |
 | Сервисы | `src/services/stt.py`, `tts.py`, `cache.py`, `storage.py`, `sqlite_store.py`, `telegram.py` | голос, сессии, хранение, уведомление о переводе |
 | Клиент | `src/tenant.py`, `tenants/<имя>/` | всё, что отличает одну компанию от другой |

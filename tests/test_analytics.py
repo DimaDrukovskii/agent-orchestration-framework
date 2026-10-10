@@ -32,7 +32,7 @@ def test_summary_counts_cost_by_kind_and_session(monkeypatch, tmp_path):
 
     assert s["sessions"] == 2
     assert s["turns"] == 3
-    assert s["cost_rub"] == {"total": 0.6, "llm": 0.1, "tts": 0.4, "stt": 0.1}
+    assert s["cost_rub"] == {"total": 0.6, "llm": 0.1, "tts": 0.4, "stt": 0.1, "estimated": 0.0}
     assert s["per_session_rub"] == 0.3
     assert s["speech_minutes_est"] == 0.5
     assert s["per_minute_rub"] == 1.2
@@ -97,3 +97,37 @@ def test_summary_endpoint_requires_key_and_returns_shape():
     body = response.json()
     assert body["period_days"] == 3
     assert {"sessions", "cost_rub", "per_minute_rub", "benchmark", "by_day", "recent"} <= set(body)
+
+
+def test_missing_provider_cost_is_recorded_as_a_marked_estimate(monkeypatch):
+    from types import SimpleNamespace
+
+    from src.agent import hermes_agent as agent
+    from src.config import settings
+
+    saved = []
+    monkeypatch.setattr(agent.analytics, "record", lambda kind, cost=0, **kw: saved.append((kind, cost, kw["model"])))
+    monkeypatch.setattr(settings, "llm_cost_estimate_rub", 0.026)
+    usage = SimpleNamespace(prompt_tokens=100, completion_tokens=20, prompt_tokens_details=None, cost_rub=None)
+    assert agent.log_usage(SimpleNamespace(usage=usage), "m") is False
+    assert saved == [("llm", 0.026, "m (оценка)")]
+    saved.clear()
+    real = SimpleNamespace(prompt_tokens=100, completion_tokens=20, prompt_tokens_details=None, cost_rub=0.031)
+    assert agent.log_usage(SimpleNamespace(usage=real), "m") is True
+    assert saved == [("llm", 0.031, "m")]
+
+
+def test_wav_length_for_stt_estimate():
+    import io
+    import wave
+
+    from src.services.stt import wav_seconds
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(b"\x00\x00" * 16000)
+    assert abs(wav_seconds(buf.getvalue(), "audio/wav") - 2.0) < 1e-6
+    assert wav_seconds(b"abc", "audio/webm") == 0.0

@@ -37,7 +37,7 @@ tenants/
   mts/               данные МТС: prompt.md, knowledge/, site_map.json, tenant.json, telephony.json
   _template/         заготовка для новой компании
 docker/              Dockerfile, docker-compose.yml (приложение и Redis)
-tests/               автотесты (179), без сетевых вызовов
+tests/               автотесты (185), без сетевых вызовов
 scripts/             setup.py (установка и подключение номера), load_test.py и load_test_phone.py (нагрузка без платных запросов), measure_cost.py (ПЛАТНЫЙ замер цены диалога и минуты), test_call.py (сценарии текстом)
 docs/
   website_side_bar/  продукт: архитектура, переменные окружения, подключение модели, голосовой конвейер, БД
@@ -58,7 +58,7 @@ python3 scripts/setup.py
 
 **Телефон:** `python3 scripts/setup.py --phone`: спросит Twilio SID и токен, найдёт ваш номер, поднимет временный https-адрес
 (если установлен `cloudflared`, иначе спросит адрес из `ngrok http 8000`) и направит номер на сервер. Подробности и ограничения:
-[docs/website_side_bar/TELEPHONY.md](docs/website_side_bar/TELEPHONY.md). Без вопросов: `--yes`, ключи из переменных окружения
+[docs/website_side_bar/TELEPHONY.md](docs/website_side_bar/TELEPHONY.md). Стоимость минуты и окупаемость: [docs/website_side_bar/COST.md](docs/website_side_bar/COST.md). Без вопросов: `--yes`, ключи из переменных окружения
 (`POLZA_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `PUBLIC_BASE_URL`).
 
 Вручную: создайте `.env` по [docs/website_side_bar/ENVIRONMENT.md](docs/website_side_bar/ENVIRONMENT.md) и запустите

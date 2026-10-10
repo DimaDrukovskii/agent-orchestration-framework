@@ -84,25 +84,35 @@ def count_user_turns(messages: List[Dict[str, Any]]) -> int:
     return sum(1 for m in messages if m.get("role") == "user")
 
 
-def log_usage(response: Any, model: str) -> None:
-    """Токены запроса в лог: по ним видно, куда уходят деньги (cached — дешёвые)."""
+ESTIMATE_MARK = " (оценка)"
+
+
+def record_llm_estimate(model: str) -> None:
+    """Провайдер не вернул цену запроса: в журнал идёт оценка по замерам, с пометкой, что это оценка."""
+    analytics.record("llm", settings.llm_cost_estimate_rub, model=model + ESTIMATE_MARK)
+
+
+def log_usage(response: Any, model: str) -> bool:
+    """Токены запроса в лог: по ним видно, куда уходят деньги (cached — дешёвые). True, если записана реальная цена."""
     usage = getattr(response, "usage", None)
     if usage is None:
-        return
+        return False
     details = getattr(usage, "prompt_tokens_details", None)
     cached = getattr(details, "cached_tokens", 0) or 0
     logger.info(
         f"LLM usage model={model} in={getattr(usage, 'prompt_tokens', 0)} "
         f"cached={cached} out={getattr(usage, 'completion_tokens', 0)}"
     )
+    cost = getattr(usage, "cost_rub", 0) or 0  # реальная цена запроса от провайдера
     analytics.record(
         "llm",
-        getattr(usage, "cost_rub", 0),  # реальная цена запроса от провайдера
-        model=model,
+        cost or settings.llm_cost_estimate_rub,
+        model=model if cost else model + ESTIMATE_MARK,
         tokens_in=getattr(usage, "prompt_tokens", 0),
         tokens_out=getattr(usage, "completion_tokens", 0),
         tokens_cached=cached,
     )
+    return bool(cost)
 
 
 SENTENCE_END = re.compile(r"(?<=[.!?…])[\"»)]*\s+")
@@ -335,12 +345,11 @@ class HermesAgent:
             yield {"type": "done", "result": {"response": TURN_CAP_REPLY, "messages": working, "pending_transfer": None, "chat": [], "links": []}}
             return
 
-        if self.provider == "hermes_agent":  # у Hermes нет нашего инструмента перевода: очевидные случаи решаем до него
-            shortcut = escalation_result(working)
-            if shortcut:
-                yield {"type": "sentence", "text": shortcut["response"]}
-                yield {"type": "done", "result": shortcut}
-                return
+        shortcut = escalation_result(working)  # очевидная просьба о человеке: переводим сразу, без ожидания модели
+        if shortcut:
+            yield {"type": "sentence", "text": shortcut["response"]}
+            yield {"type": "done", "result": shortcut}
+            return
 
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
@@ -366,8 +375,10 @@ class HermesAgent:
             request["extra_body"] = {**extra, "stream_options": {"include_usage": True}}
 
             buffer, text, calls, finish = "", "", {}, None
+            usage_logged = False
             async for chunk in await self.client.chat.completions.create(**request):
                 if getattr(chunk, "usage", None) is not None:
+                    usage_logged = True
                     log_usage(chunk, self.model)
                 if not chunk.choices:
                     continue
@@ -394,6 +405,8 @@ class HermesAgent:
                 spoken.append(buffer.strip())
                 yield {"type": "sentence", "text": buffer.strip()}
 
+            if not usage_logged:
+                record_llm_estimate(self.model)
             if not calls:
                 final = " ".join(spoken).strip()
                 working.append({"role": "assistant", "content": final})
@@ -450,10 +463,9 @@ class HermesAgent:
             working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
             return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
 
-        if self.provider == "hermes_agent":
-            shortcut = escalation_result(working_messages)
-            if shortcut:
-                return shortcut
+        shortcut = escalation_result(working_messages)
+        if shortcut:
+            return shortcut
 
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""

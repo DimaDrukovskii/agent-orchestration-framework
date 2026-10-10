@@ -153,6 +153,10 @@ class Analytics:
                 (since,),
             ).fetchall()
             transferred = self._transferred(conn, since)
+            estimated = conn.execute(
+                "SELECT SUM(cost_rub) AS cost FROM usage_events WHERE created_at >= datetime('now', ?) AND model LIKE '%(оценка)'",
+                (since,),
+            ).fetchone()["cost"]
         finally:
             conn.close()
 
@@ -177,6 +181,7 @@ class Analytics:
                 "llm": round(cost_of("llm"), 4),
                 "tts": round(cost_of("tts"), 4),
                 "stt": round(cost_of("stt"), 4),
+                "estimated": round(_number(estimated), 4),  # часть суммы, посчитанная по замерам, а не от провайдера
             },
             "per_session_rub": round(total / session_count, 4) if session_count else None,
             "per_turn_rub": round(total / turns, 4) if turns else None,

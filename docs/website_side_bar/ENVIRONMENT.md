@@ -45,6 +45,7 @@
 | `TELEPHONY_LONG_FILLER_AFTER_MS` | `3000` | и всё ещё молчит: «ещё секунду, уточняю» (`long_fillers`) |
 | `TELEPHONY_TURN_TIMEOUT_SECONDS` | `20` | модель молчит дольше: агент извиняется и просит повторить, а не висит в тишине |
 | `LLM_MAX_TURNS` | `60` | реплик абонента за разговор, дальше агент предлагает оператора |
+| `LLM_COST_ESTIMATE_RUB` / `STT_COST_ESTIMATE_RUB_PER_MINUTE` | `0.026` / `0.5` | оценка стоимости, если провайдер не вернул цену (в журнале помечается «(оценка)», см. [COST.md](COST.md)) |
 | `TTS_STRESS_MARKS` | `false` | знаки ударения в тексте озвучки (словарь `STRESS` в `src/services/speech_text.py`); включать после прослушивания |
 | `HERMES_AGENT_BASE_URL` / `HERMES_AGENT_API_KEY` / `HERMES_AGENT_MODEL` | `http://hermes:8642/v1` / `""` / `hermes-agent` | Hermes Agent как «мозг» (`model_profile: hermes_agent`) |
 | `TELEPHONY_SILENCE_END_MS` | `700` | пауза, после которой реплика абонента считается законченной |

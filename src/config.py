@@ -135,6 +135,10 @@ class Settings(BaseSettings):
     stt_language: str = "ru"
     stt_max_bytes: int = 5_000_000
     stt_timeout_seconds: float = 30
+    # Если провайдер не вернул цену (потоковый ответ модели, распознавание), в журнал пишется оценка по замерам 2026-10-11
+    # и помечается «(оценка)»: ответ модели ~0,026 ₽, распознавание ~0,5 ₽ за минуту речи (прайс производителя, не замер).
+    llm_cost_estimate_rub: float = 0.026
+    stt_cost_estimate_rub_per_minute: float = 0.5
 
     # Телефония (Twilio) — docs/mts/TRACK1_PLAN.md: "код-only адаптер, живого
     # теста нет, номера не выдали". Поля здесь только для того, чтобы при

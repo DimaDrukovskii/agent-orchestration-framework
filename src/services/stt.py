@@ -73,8 +73,29 @@ class STTService:
             "duration": body.get("duration") or usage.get("durationSeconds"),
             "cost_rub": usage.get("cost_rub"),
         }
-        analytics.record("stt", result["cost_rub"], model=model, units=result["duration"] or 0)
+        duration = result["duration"] or wav_seconds(audio, content_type)
+        cost = result["cost_rub"]
+        if not cost and duration:  # Polza цену распознавания не возвращает: оценка, помеченная в журнале
+            cost, result["cost_rub"] = duration * settings.stt_cost_estimate_rub_per_minute / 60, None
+            model_label = model + " (оценка)"
+        else:
+            model_label = model
+        analytics.record("stt", cost, model=model_label, units=duration or 0)
         return result
+
+
+def wav_seconds(audio: bytes, content_type: str) -> float:
+    """Длина WAV-записи в секундах по заголовку; для других форматов 0 (оценку не делаем)."""
+    if "wav" not in (content_type or "").lower():
+        return 0.0
+    try:
+        import io
+        import wave
+
+        with wave.open(io.BytesIO(audio)) as w:
+            return w.getnframes() / float(w.getframerate())
+    except Exception:
+        return 0.0
 
 
 def _words(text: str) -> list:

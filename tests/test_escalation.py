@@ -49,3 +49,24 @@ def test_hermes_agent_transfers_without_calling_the_model(monkeypatch):
 
     events = asyncio.run(collect())
     assert events[0]["type"] == "sentence" and events[-1]["result"]["pending_transfer"]["department"] == "менеджер"
+
+
+def test_operator_request_inside_a_long_phrase_is_caught_for_every_profile(monkeypatch):
+    found = escalation_intent("И ещё у меня вчера списали двести рублей непонятно за что. Можно поговорить с оператором?")
+    assert found and found[0] in ("менеджер", "биллинг")
+
+    agent = HermesAgent("polza")
+    called = []
+
+    async def boom(**kwargs):
+        called.append(1)
+        raise AssertionError("модель не должна вызываться")
+
+    monkeypatch.setattr(agent.client.chat.completions, "create", boom)
+
+    async def collect():
+        return [e async for e in agent.run_stream(
+            [{"role": "user", "content": "Можно поговорить с оператором?"}], "+375")]
+
+    events = asyncio.run(collect())
+    assert not called and events[-1]["result"]["pending_transfer"]

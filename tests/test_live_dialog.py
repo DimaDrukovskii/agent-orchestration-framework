@@ -74,7 +74,7 @@ def test_stream_speaks_before_tool_call_and_closes_after_transfer(monkeypatch):
          _chunk(tool=(0, None, None, ' "reason": "списание"}'), finish="tool_calls")],
         [_chunk("Передаю вас в биллинг.", finish="stop")],
     ])
-    events = _collect(agent, [{"role": "user", "content": "соедините с оператором"}])
+    events = _collect(agent, [{"role": "user", "content": "у меня вопрос по начислениям, никак не разберусь"}])
     assert [e["type"] for e in events] == ["sentence", "tool", "sentence", "done"]
     assert events[1]["name"] == "transfer_to_department"
     result = events[-1]["result"]

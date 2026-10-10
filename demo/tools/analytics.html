@@ -150,7 +150,9 @@
       cmp.append(compareRow("Наш агент", mine, max, mine <= bench ? "var(--good)" : "var(--bad)"),
                  compareRow(d.benchmark.name, bench, max, "var(--line)"));
     }
-    $("compareNote").textContent = "Минуты речи оценены по длине озвученного текста (14 символов в секунду) и длине записей; это оценка, не замер линии. У Exolve к цене сессии добавляются номера и минуты связи.";
+    const est = d.cost_rub.estimated || 0;
+    $("compareNote").textContent = "Минуты речи оценены по длине озвученного текста (14 символов в секунду) и длине записей; это оценка, не замер линии. У Exolve к цене сессии добавляются номера и минуты связи."
+      + (est > 0 ? " Из суммы " + est.toFixed(2) + " ₽ посчитано по замерам, а не пришло от провайдера (ответы модели в потоке, распознавание)." : "");
 
     const c = d.cost_rub, total = c.total || 1;
     $("split").replaceChildren(...[["llm", "--llm"], ["tts", "--tts"], ["stt", "--stt"]].map(([key, css]) => {
