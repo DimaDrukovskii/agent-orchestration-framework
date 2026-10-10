@@ -16,6 +16,15 @@ class Settings(BaseSettings):
     polza_base_url: str = "https://polza.ai/api/v1"
     polza_model: str = "anthropic/claude-sonnet-4"
 
+    # Локальная модель (provider="local" в виджете звонка): любой
+    # OpenAI-совместимый сервер — Ollama (:11434), LM Studio (:1234), vLLM.
+    # Из контейнера хост виден как host.docker.internal. Для звонка нужна
+    # модель с поддержкой tool calling (например hermes3, qwen2.5, llama3.1).
+    local_base_url: str = "http://host.docker.internal:11434/v1"
+    local_model: str = "hermes3"
+    local_api_key: str = "local"  # серверу обычно всё равно, но поле обязательно
+    local_timeout_seconds: int = 120  # локальная модель на ноутбуке отвечает медленнее облака
+
     # Креативность ответов Hermes: 0 — сухо и предсказуемо, 1 — живее и
     # разнообразнее. Для звонка 0.6–0.8 даёт речь "не по шаблону", но без
     # выдумок. Модель задаётся POLZA_MODEL / ANTHROPIC_MODEL выше.

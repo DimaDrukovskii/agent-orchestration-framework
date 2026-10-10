@@ -2,8 +2,9 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from anthropic import APITimeoutError
+from openai import APITimeoutError as OpenAITimeoutError
 from redis.exceptions import RedisError
 from src.agent.hermes_agent import HermesAgent
 from src.api.auth import verify_api_key
@@ -13,6 +14,16 @@ from src.utils import logger, mask_phone
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 hermes = HermesAgent()
+_agents: Dict[str, HermesAgent] = {}  # профили кроме дефолтного, создаются по требованию
+
+
+def agent_for(model_profile: Optional[str]) -> HermesAgent:
+    """"default"/None — модель из LLM_PROVIDER, "local" — локальный сервер."""
+    if model_profile in (None, "default"):
+        return hermes
+    if model_profile not in _agents:
+        _agents[model_profile] = HermesAgent(model_profile)
+    return _agents[model_profile]
 cache = CacheService()
 
 SESSION_TTL = settings.hermes_session_ttl_seconds
@@ -22,6 +33,7 @@ class HermesDialogRequest(BaseModel):
     session_id: str
     caller_phone: str
     user_message: str
+    model_profile: Optional[Literal["default", "local"]] = None
 
 
 class HermesDialogResponse(BaseModel):
@@ -161,7 +173,7 @@ async def hermes_dialog(request: HermesDialogRequest):
         history = await _get_session(request.session_id)
         history.append({"role": "user", "content": request.user_message})
 
-        result = await hermes.run(messages=history, caller_phone=request.caller_phone)
+        result = await agent_for(request.model_profile).run(messages=history, caller_phone=request.caller_phone)
 
         await _save_session(request.session_id, request.caller_phone, result["messages"])
         persisted = await _persist_turn(
@@ -179,8 +191,8 @@ async def hermes_dialog(request: HermesDialogRequest):
             persisted=persisted
         )
 
-    except APITimeoutError as e:
-        logger.error(f"[{request.session_id}] Claude timeout: {str(e)}")
+    except (APITimeoutError, OpenAITimeoutError) as e:
+        logger.error(f"[{request.session_id}] LLM timeout: {str(e)}")
         raise _unavailable("agent_timeout", "Агент не ответил вовремя")
     except (RedisError, sqlite3.Error) as e:
         logger.error(f"[{request.session_id}] Session store error: {str(e)}")
@@ -202,7 +214,7 @@ async def hermes_dialog_stream(request: HermesDialogRequest):
 
         async def token_generator():
             full_response = ""
-            async for chunk in hermes.run_streaming(messages=history, caller_phone=request.caller_phone):
+            async for chunk in agent_for(request.model_profile).run_streaming(messages=history, caller_phone=request.caller_phone):
                 full_response += chunk
                 yield chunk
 

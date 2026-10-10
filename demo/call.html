@@ -603,6 +603,10 @@
         <div class="settings" id="settings" hidden>
           <div>Голос: <span class="voice-mode" id="voiceMode">проверяю…</span></div>
           <label>
+            Модель агента
+            <select id="modelSelect"></select>
+          </label>
+          <label>
             Резервный голос браузера
             <select id="voiceSelect"></select>
           </label>
@@ -621,6 +625,7 @@
       const API_URL = "/api/hermes/dialog";
       const TTS_URL = "/api/tts";
       const TTS_STATUS_URL = "/api/tts/status";
+      const LLM_STATUS_URL = "/api/llm/status";
       const CALLER_PHONE = "+79990000000";
       const DEFAULT_API_KEY = "test-local-key";
       const CONNECT_DELAY_MS = 2200;
@@ -659,6 +664,7 @@
       const settingsBtn = $("settingsBtn");
       const settingsEl = $("settings");
       const voiceSelect = $("voiceSelect");
+      const modelSelect = $("modelSelect");
       const voiceModeEl = $("voiceMode");
       const keyInput = $("apiKeyInput");
 
@@ -677,6 +683,7 @@
       let voices = [];
       let selectedVoiceURI = storeGet("mts_call_voice");
       let serverVoiceAvailable = false;
+      let modelProfile = storeGet("mts_model_profile") === "local" ? "local" : "default";
 
       // --- хранилище (может быть недоступно) ------------------------------
       function storeGet(key) {
@@ -697,6 +704,7 @@
       keyInput.addEventListener("change", () => {
         storeSet("mts_api_key", keyInput.value.trim());
         checkServerVoice();
+        checkModels();
       });
 
       const apiHeaders = () => ({ "Content-Type": "application/json", "X-API-Key": keyInput.value.trim() });
@@ -782,6 +790,37 @@
         voiceModeEl.textContent = serverVoiceAvailable ? "серверный (живой)" : "браузерный (резервный, роботизированный)";
         return serverVoiceAvailable;
       }
+
+      // --- выбор модели агента ---------------------------------------------
+      function setModelOptions(status) {
+        const defaultOpt = new Option("Облако — " + status.default.model, "default");
+        const localOpt = new Option(
+          "Локальная — " + status.local.model + (status.local.available ? "" : " (сервер не запущен)"),
+          "local"
+        );
+        localOpt.disabled = !status.local.available;
+        modelSelect.replaceChildren(defaultOpt, localOpt);
+        if (modelProfile === "local" && !status.local.available) modelProfile = "default";
+        modelSelect.value = modelProfile;
+      }
+
+      async function checkModels() {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+        try {
+          const response = await fetch(LLM_STATUS_URL, { headers: apiHeaders(), signal: controller.signal });
+          if (response.ok) setModelOptions(await response.json());
+        } catch (e) {
+          // статус недоступен — оставляем облако, звонок это не ломает
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      modelSelect.addEventListener("change", () => {
+        modelProfile = modelSelect.value === "local" ? "local" : "default";
+        storeSet("mts_model_profile", modelProfile);
+      });
 
       // --- резервные голоса браузера --------------------------------------
       function voiceScore(v) {
@@ -1039,6 +1078,7 @@
               session_id: activeCall.sessionId,
               caller_phone: CALLER_PHONE,
               user_message: text,
+              model_profile: modelProfile,
             }),
             signal: controller.signal,
           });
@@ -1068,7 +1108,7 @@
 
         activeCall.agentFailures = result.failed ? activeCall.agentFailures + 1 : 0;
         if (activeCall.agentFailures >= MAX_AGENT_FAILURES) {
-          failCall(activeCall, "Агент не отвечает. Проверьте сервер и баланс LLM-провайдера.");
+          failCall(activeCall, "Агент не отвечает. Облако: проверьте баланс Polza. Локальная модель: проверьте, что сервер запущен.");
           return;
         }
 
@@ -1111,6 +1151,7 @@
           source: null,
         };
         call = activeCall;
+        modelSelect.disabled = true; // модель нельзя менять посреди разговора
 
         // AudioContext создаём сразу в обработчике клика — иначе браузер не даст играть звук
         if (AudioContextImpl) {
@@ -1161,6 +1202,7 @@
         const seconds = activeCall.startedAt ? Math.floor((Date.now() - activeCall.startedAt) / 1000) : 0;
         teardownCall(activeCall);
         call = null;
+        modelSelect.disabled = false;
         setPhase("ended");
         statusEl.textContent = message || STATUS_TEXT.ended;
         timerEl.textContent = seconds ? "Длительность " + formatDuration(seconds) : "";
@@ -1210,6 +1252,7 @@
 
       checkEnvironment();
       checkServerVoice();
+      checkModels();
     </script>
   </body>
 </html>

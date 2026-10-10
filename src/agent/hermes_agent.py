@@ -11,29 +11,39 @@ settings.llm_provider:
 """
 
 import json
-from typing import List, Dict, Any, AsyncGenerator
+from typing import List, Dict, Any, AsyncGenerator, Optional
 from src.config import settings
 from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool
 from src.agent.hermes_prompts import HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
+# провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
+OPENAI_COMPAT_PROVIDERS = ("polza", "local")
 MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агента
 CLOSING_PROMPT = "Коротко скажи абоненту, что происходит дальше (своими словами, не как бот)."
 
 
 class HermesAgent:
-    def __init__(self):
-        self.provider = settings.llm_provider
+    def __init__(self, provider: Optional[str] = None):
+        self.provider = provider or settings.llm_provider
 
-        if self.provider == "polza":
+        if self.provider in OPENAI_COMPAT_PROVIDERS:
             from openai import AsyncOpenAI
 
-            self.client = AsyncOpenAI(
-                api_key=settings.polza_api_key,
-                base_url=settings.polza_base_url,
-                timeout=settings.agent_timeout_seconds,
-            )
-            self.model = settings.polza_model
+            if self.provider == "local":
+                self.client = AsyncOpenAI(
+                    api_key=settings.local_api_key,
+                    base_url=settings.local_base_url,
+                    timeout=settings.local_timeout_seconds,
+                )
+                self.model = settings.local_model
+            else:
+                self.client = AsyncOpenAI(
+                    api_key=settings.polza_api_key,
+                    base_url=settings.polza_base_url,
+                    timeout=settings.agent_timeout_seconds,
+                )
+                self.model = settings.polza_model
         elif self.provider == "anthropic":
             from anthropic import AsyncAnthropic
 
@@ -61,7 +71,7 @@ class HermesAgent:
                 "pending_transfer": dict|None
             }
         """
-        if self.provider == "polza":
+        if self.provider in OPENAI_COMPAT_PROVIDERS:
             return await self._run_openai(messages, caller_phone)
         return await self._run_anthropic(messages, caller_phone)
 
@@ -226,7 +236,7 @@ class HermesAgent:
         Упрощённая версия БЕЗ tool calls в стриме — для ответов, требующих
         tool (цифры, инструкции), используй run().
         """
-        if self.provider == "polza":
+        if self.provider in OPENAI_COMPAT_PROVIDERS:
             stream = await self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=600,

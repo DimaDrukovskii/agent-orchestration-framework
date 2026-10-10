@@ -14,6 +14,9 @@ services:
       - POLZA_API_KEY=${POLZA_API_KEY:-}
       - POLZA_BASE_URL=${POLZA_BASE_URL:-https://polza.ai/api/v1}
       - POLZA_MODEL=${POLZA_MODEL:-anthropic/claude-sonnet-4}
+      - LOCAL_BASE_URL=${LOCAL_BASE_URL:-http://host.docker.internal:11434/v1}
+      - LOCAL_MODEL=${LOCAL_MODEL:-hermes3}
+      - LOCAL_API_KEY=${LOCAL_API_KEY:-local}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
       - TTS_PROVIDER=${TTS_PROVIDER:-none}
       - TTS_API_KEY=${TTS_API_KEY:-}
