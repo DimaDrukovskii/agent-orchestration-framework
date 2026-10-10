@@ -1,5 +1,5 @@
 """
-Уведомления/перевод в чат через Telegram (docs/TRACK1_PLAN.md).
+Уведомления/перевод в чат через Telegram (docs/mts/TRACK1_PLAN.md).
 
 settings.telegram_bot_token / settings.telegram_chat_id пустые по умолчанию —
 функция выключена, агент работает без неё, ничего не падает.

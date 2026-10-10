@@ -1,0 +1,8 @@
+[
+  {
+    "id": "example",
+    "title": "Название раздела",
+    "url": "https://example.com/section",
+    "when": "когда показывать этот раздел"
+  }
+]

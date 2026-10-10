@@ -59,7 +59,7 @@ CREATE TABLE public.agent_metrics (
 
 CREATE INDEX metrics_date_idx ON public.agent_metrics(date);
 
--- Table: api_clients — мультиарендность (docs/SCALING_PLAN.md §3).
+-- Table: api_clients — мультиарендность (docs/mts/SCALING_PLAN.md §3).
 -- Структура под "ключ на бизнес" вместо одного общего AGENT_API_KEY.
 -- Не подключена в src/api/auth.py как основная проверка — тот общий
 -- ключ продолжает работать как есть, эта таблица готова под следующий шаг.

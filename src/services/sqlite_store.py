@@ -3,7 +3,7 @@ SQLite-бэкенд для сессий (замена Redis) и звонков (
 
 Один файл БД (settings.sqlite_path), только stdlib — ни Docker, ни внешних
 сервисов. Блокирующие вызовы sqlite3 уходят в поток (asyncio.to_thread), чтобы
-не держать event loop. Схема `calls` повторяет docs/DATABASE_SCHEMA.md.
+не держать event loop. Схема `calls` повторяет docs/website_side_bar/DATABASE_SCHEMA.md.
 """
 
 import asyncio

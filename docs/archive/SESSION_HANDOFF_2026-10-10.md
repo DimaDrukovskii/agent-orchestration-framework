@@ -59,7 +59,7 @@ LLM_TEMPERATURE=0.7
 HERMES_API_KEY=…          (необязателен, не короче 16 символов; пароль между контейнерами)
 LOCAL_BASE_URL/LOCAL_MODEL (шаблонные значения лучше удалить, пока нет адреса сервера ребят)
 ```
-Прочее с дефолтами в `src/config.py`: `LLM_MAX_TOKENS=300`, `LLM_MAX_HISTORY_MESSAGES=12`, `LLM_PROMPT_CACHE=true`, `LLM_KB_PRERETRIEVAL=true`, `LLM_MAX_TURNS=20`, `LLM_REASONING_EFFORT=none`. Полный список: `docs/ENVIRONMENT.md`.
+Прочее с дефолтами в `src/config.py`: `LLM_MAX_TOKENS=300`, `LLM_MAX_HISTORY_MESSAGES=12`, `LLM_PROMPT_CACHE=true`, `LLM_KB_PRERETRIEVAL=true`, `LLM_MAX_TURNS=20`, `LLM_REASONING_EFFORT=none`. Полный список: `docs/website_side_bar/ENVIRONMENT.md`.
 
 **Важно:** compose ищет `.env` рядом с `docker/`, а не в корне. Запускать всегда так:
 ```bash
@@ -98,7 +98,7 @@ docker compose --env-file .env -f docker/docker-compose.yml up -d
 1. В кабинете Polza разрешить для ключа голосовые модели: `elevenlabs/text-to-speech-multilingual-v2` и/или `google/gemini-3.1-flash-tts-preview` (сейчас 403). Тогда ассистент сгенерирует образцы голосов для прослушивания.
 2. Держать суточный лимит ключа с запасом ≥ несколько рублей над расходом (минимальный резерв ~1 ₽ на запрос).
 3. Нужен ли именно Hermes Agent от Nous в боевой цепочке (по условиям МТС/хакатона) или достаточно названия «Hermes» у нашего агента.
-4. Какой маршрут вызывает МТС: `docs/MTS_INTEGRATION.md` описывает `POST /api/dialog` (`history`, `action`, `department`, `confidence`), а виджет и Hermes ходят в `POST /api/hermes/dialog` (`transfer`, `persisted`). Старый маршрут идёт через оркестратор и на Polza не проверялся.
+4. Какой маршрут вызывает МТС: `docs/mts/MTS_INTEGRATION.md` описывает `POST /api/dialog` (`history`, `action`, `department`, `confidence`), а виджет и Hermes ходят в `POST /api/hermes/dialog` (`transfer`, `persisted`). Старый маршрут идёт через оркестратор и на Polza не проверялся.
 5. Адрес и протокол модели ребят (для `LOCAL_BASE_URL`, `LOCAL_MODEL`) и роль, которую она играет: по смыслу диалога это **абонент-симулятор**, который звонит Алине; такого скрипта (`scripts/simulate_call.py`) пока нет.
 
 ## 9. Дальше (с критериями готовности)
@@ -109,7 +109,7 @@ docker compose --env-file .env -f docker/docker-compose.yml up -d
 | 1 | Нормальный поиск по базе знаний (RAG) и реальное наполнение базой МТС | ответы строго по документам; сейчас поиск по словам, цен в базе нет |
 | 2 | Потоковая выдача по предложениям | первый звук ≤ 1,5 с |
 | 3 | Конвейер на Pipecat/LiveKit, WebSocket, перебивание | стабильные паузы, перебивание |
-| 4 | Российские провайдеры или локальный контур (Polza помечает ElevenLabs/Google как «данные не в РФ», `docs/PITCH_COMPLIANCE.md`) | данные не покидают РФ |
+| 4 | Российские провайдеры или локальный контур (Polza помечает ElevenLabs/Google как «данные не в РФ», `docs/mts/PITCH_COMPLIANCE.md`) | данные не покидают РФ |
 | — | Телефония: сейчас код-only адаптер (`TWILIO_*` пустые), номера нет | |
 
 ## 10. Правила работы, закреплённые в сессии

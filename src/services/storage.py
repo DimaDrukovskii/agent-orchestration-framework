@@ -109,7 +109,7 @@ class StorageService:
     
     async def get_client_by_api_key_hash(self, api_key_hash: str) -> Optional[dict]:
         """
-        Структура под мультиарендность (docs/SCALING_PLAN.md §3, api_clients).
+        Структура под мультиарендность (docs/mts/SCALING_PLAN.md §3, api_clients).
         Не вызывается из src/api/auth.py сейчас — единый AGENT_API_KEY
         продолжает работать как основная проверка. Это следующий шаг:
         когда появится больше одного бизнеса, auth.py переключится на

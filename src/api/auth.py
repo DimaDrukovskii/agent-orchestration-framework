@@ -2,7 +2,7 @@
 Проверка API-ключа для публичных эндпоинтов агента.
 
 MVP: один общий ключ из settings.agent_api_key (переменная окружения
-AGENT_API_KEY). Это осознанно просто — см. docs/SCALING_PLAN.md §2 и §7
+AGENT_API_KEY). Это осознанно просто — см. docs/mts/SCALING_PLAN.md §2 и §7
 (Этап 1): таблица api_clients с ключом на бизнес — следующий шаг, не этот.
 """
 
@@ -22,7 +22,7 @@ def _reject(reason: str) -> None:
 
 async def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> str:
     # Header опционален на уровне FastAPI (иначе отсутствие ключа даёт 422,
-    # а не единый формат ошибки из docs/SCALING_PLAN.md §2) — отсутствие и
+    # а не единый формат ошибки из docs/mts/SCALING_PLAN.md §2) — отсутствие и
     # неверное значение должны выглядеть для интегратора одинаково: 401.
     if not x_api_key:
         _reject("missing X-API-Key")

@@ -718,8 +718,8 @@
       <section class="card" role="dialog" aria-label="Звонок агенту МТС">
         <header class="card-head">
           <div>
-            <div class="who-name">Алина · МТС</div>
-            <div class="who-sub">ИИ-ассистент поддержки</div>
+            <div class="who-name" id="whoName">Алина · МТС</div>
+            <div class="who-sub" id="whoSub">ИИ-ассистент поддержки</div>
           </div>
           <div class="head-actions">
             <button class="icon-btn" id="settingsBtn" type="button" aria-label="Настройки" aria-expanded="false">
@@ -754,7 +754,7 @@
         </div>
 
         <div class="chat" id="chat" role="log" aria-live="polite" aria-label="Диалог">
-          <div class="chat-msg from-agent">Здравствуйте! Я Алина, ИИ-ассистент МТС. Спросите про тарифы, услуги или роуминг: голосом или текстом.</div>
+          <div class="chat-msg from-agent" id="welcomeMsg">Здравствуйте! Я Алина, ИИ-ассистент МТС. Спросите про тарифы, услуги или роуминг: голосом или текстом.</div>
         </div>
 
         <div class="notice" id="notice" hidden></div>
@@ -849,7 +849,9 @@
       const STT_MIN_CHARS = 2;
       const LEVEL_SMOOTHING = 0.35;
       const LEVEL_GAIN = 4;
-      const GREETING = "Здравствуйте, менеджер Алина от компании МТС, слушаю.";
+      // подписи по умолчанию; настоящие приходят с сервера (GET /api/tenant, файл tenants/<клиент>/tenant.json)
+      let GREETING = "Здравствуйте, менеджер Алина от компании МТС, слушаю.";
+      let LAUNCHER_TEXT = "Поговорить с Алиной";
       // ошибки ключа повторять бессмысленно: сразу объясняем, а не «связь пропала» три раза
       const FATAL_AGENT_ERRORS = {
         model_not_allowed: "Модель агента не разрешена на ключе Polza (403). Разрешите её в настройках ключа и позвоните снова.",
@@ -919,6 +921,7 @@
       keyInput.value = storeGet("mts_api_key") || DEFAULT_API_KEY;
       keyInput.addEventListener("change", () => {
         storeSet("mts_api_key", keyInput.value.trim());
+        loadTenant();
         checkServerVoice();
         checkModels();
       });
@@ -934,7 +937,7 @@
       function setPhase(phase) {
         widget.dataset.phase = phase;
         statusEl.textContent = call && call.muted && phase === "listening" ? "Микрофон выключен" : STATUS_TEXT[phase];
-        if (!call) launcherText.textContent = "Поговорить с Алиной";
+        if (!call) launcherText.textContent = LAUNCHER_TEXT;
       }
 
       function showCaption(who, text) {
@@ -951,6 +954,28 @@
         chatEl.appendChild(bubble);
         chatEl.scrollTop = chatEl.scrollHeight;
         return bubble;
+      }
+
+      async function loadTenant() {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+        try {
+          const response = await fetch("/api/tenant", { headers: apiHeaders(), signal: controller.signal });
+          if (!response.ok) return;
+          const t = await response.json();
+          const name = t.company ? t.agent_name + " · " + t.company : t.agent_name;
+          $("whoName").textContent = name;
+          $("whoSub").textContent = t.subtitle;
+          $("welcomeMsg").textContent = t.welcome;
+          document.querySelector(".card").setAttribute("aria-label", "Звонок: " + name);
+          GREETING = t.greeting;
+          LAUNCHER_TEXT = t.launcher_text;
+          if (!call) launcherText.textContent = LAUNCHER_TEXT;
+        } catch (e) {
+          // остаются подписи по умолчанию из этого файла
+        } finally {
+          clearTimeout(timeout);
+        }
       }
 
       // агент показывает раздел сайта: кнопка-ссылка в ленте (только https, откроется в новой вкладке)
@@ -1876,6 +1901,7 @@
       }
 
       checkEnvironment();
+      loadTenant();
       checkServerVoice();
       checkModels();
     </script>

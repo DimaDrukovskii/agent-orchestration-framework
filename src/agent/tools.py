@@ -7,9 +7,10 @@ import json
 import os
 import glob
 from typing import List, Dict, Any
+from src.tenant import tenant_dir
 from src.utils import logger, mask_phone
 
-KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "../../data/knowledge")
+KNOWLEDGE_DIR = str(tenant_dir() / "knowledge")
 
 
 # ---- Схемы инструментов для Claude (tool_use API) ----
@@ -203,7 +204,7 @@ def send_to_chat(text: str) -> Dict[str, Any]:
     return {"action": "chat", "text": text.strip()[:CHAT_MESSAGE_MAX_CHARS], "status": "отправлено в чат"}
 
 
-SITE_MAP_PATH = os.path.join(os.path.dirname(__file__), "../../data/site_map.json")
+SITE_MAP_PATH = str(tenant_dir() / "site_map.json")
 
 
 def load_site_map() -> List[Dict[str, str]]:

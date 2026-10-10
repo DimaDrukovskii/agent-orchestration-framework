@@ -75,12 +75,15 @@ class Settings(BaseSettings):
     # Redis — только при cache_backend="redis"
     redis_url: str = "redis://localhost:6379"
 
+    # Клиент: папка tenants/<tenant>/ (промпт, база знаний, разделы сайта, подписи), см. src/tenant.py
+    tenant: str = "mts"
+
     # Auth — ключ, которым МТС (или локальный скрипт теста) подписывает запросы
     # к /api/hermes/*. Дефолт — только для локального запуска без .env;
     # для прода и для "своего" ключа тестов переопределить AGENT_API_KEY в .env.
     agent_api_key: str = "test-local-key"
 
-    # Telegram — уведомления и перевод в чат (docs/TRACK1_PLAN.md), см.
+    # Telegram — уведомления и перевод в чат (docs/mts/TRACK1_PLAN.md), см.
     # src/services/telegram.py. Пусто = функция выключена, агент работает и без неё.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
@@ -110,7 +113,7 @@ class Settings(BaseSettings):
     stt_max_bytes: int = 5_000_000
     stt_timeout_seconds: float = 30
 
-    # Телефония (Twilio) — docs/TRACK1_PLAN.md: "код-only адаптер, живого
+    # Телефония (Twilio) — docs/mts/TRACK1_PLAN.md: "код-only адаптер, живого
     # теста нет, номера не выдали". Поля здесь только для того, чтобы при
     # появлении номера переключение было правкой .env в 2-3 строки, а не
     # поиском, куда вообще вписывать ключи. Пусто = телефония выключена,
@@ -122,7 +125,7 @@ class Settings(BaseSettings):
     # Server
     max_call_duration_seconds: int = 600
     agent_timeout_seconds: int = 30
-    hermes_session_ttl_seconds: int = 1800  # 30 минут, как в docs/ARCHITECTURE.md
+    hermes_session_ttl_seconds: int = 1800  # 30 минут, как в docs/website_side_bar/ARCHITECTURE.md
     log_level: str = "INFO"
 
     class Config:
@@ -131,3 +134,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+NON_CHAT_MODEL_MARKERS = ("transcribe", "whisper", "text-to-speech", "speech", "tts")
+
+
+def non_chat_model(model: str) -> bool:
+    """Модель распознавания или озвучки, поставленная как чат-модель (частая ошибка в .env)."""
+    return any(marker in model.lower() for marker in NON_CHAT_MODEL_MARKERS)
+

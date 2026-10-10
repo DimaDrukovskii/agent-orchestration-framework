@@ -31,7 +31,7 @@
 | Переменная | Дефолт | Значения |
 |---|---|---|
 | `CACHE_BACKEND` | `sqlite` | `sqlite` \| `redis` (тогда нужен `REDIS_URL`) |
-| `STORAGE_BACKEND` | `sqlite` | `sqlite` \| `supabase` (тогда нужны `SUPABASE_URL`, `SUPABASE_KEY`; схема — `docs/DATABASE_SCHEMA.md`) |
+| `STORAGE_BACKEND` | `sqlite` | `sqlite` \| `supabase` (тогда нужны `SUPABASE_URL`, `SUPABASE_KEY`; схема — `docs/website_side_bar/DATABASE_SCHEMA.md`) |
 | `SQLITE_PATH` | `data/hermes.db` | путь к файлу, относительный — от корня репо |
 | `OPENAI_API_KEY` | `""` | только legacy-путь с Whisper (`src/services/audio.py`) |
 
@@ -45,14 +45,14 @@
 | `TELEGRAM_CHAT_ID` | `""` (пусто) | `src/config.py` — куда слать уведомление о переводе звонка |
 | `MAX_CALL_DURATION_SECONDS` | `600` | `src/config.py` |
 | `AGENT_TIMEOUT_SECONDS` | `30` | `src/config.py` |
-| `HERMES_SESSION_TTL_SECONDS` | `1800` | `src/config.py` — 30 минут, как в `docs/ARCHITECTURE.md` |
+| `HERMES_SESSION_TTL_SECONDS` | `1800` | `src/config.py` — 30 минут, как в `docs/website_side_bar/ARCHITECTURE.md` |
 | `LOG_LEVEL` | `INFO` | `src/config.py` |
 
 ## Запланировано — кода ещё нет
 
 | Переменная | Для чего | Статус |
 |---|---|---|
-| `TWILIO_ACCOUNT_SID` | Twilio-адаптер телефонии | идея в `docs/TRACK1_PLAN.md`, не реализовано |
+| `TWILIO_ACCOUNT_SID` | Twilio-адаптер телефонии | идея в `docs/mts/TRACK1_PLAN.md`, не реализовано |
 | `TWILIO_AUTH_TOKEN` | Twilio-адаптер | не реализовано |
 | `TWILIO_PHONE_NUMBER` | Twilio-адаптер | не реализовано |
 
@@ -98,3 +98,9 @@ TWILIO_PHONE_NUMBER=
 |---|---|---|
 | `CHAT_ENABLED` | `false` | `true` включает инструмент `send_to_chat`: агент отправляет подробности (цены, шаги, ссылки) текстом, они приходят в поле `chat` ответа и, если задан `TELEGRAM_CHAT_ID`, в Telegram. При `false` чата нет, агент работает голосом и переводом на человека |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | пусто | Telegram получает только уведомление о переводе на человека (сложный вопрос или просьба позвать оператора). Бот сам ничего не слушает и никому не отвечает |
+
+## Клиент (tenant)
+
+| Переменная | По умолчанию | Что делает |
+|---|---|---|
+| `TENANT` | `mts` | Папка `tenants/<TENANT>/`: `prompt.md`, `knowledge/`, `site_map.json`, `tenant.json`. Новая компания: скопировать `tenants/_template`, заполнить, задать `TENANT=<папка>`, перезапустить контейнер |

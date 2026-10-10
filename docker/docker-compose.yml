@@ -41,6 +41,7 @@ services:
       - ../src:/app/src
       - ../demo:/app/demo
       - ../data:/app/data
+      - ../tenants:/app/tenants
     command: uvicorn src.main:app --host 0.0.0.0 --reload
 
   # Настоящий Hermes Agent (Nous Research): «мозг» Алины по профилю hermes_agent.

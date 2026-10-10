@@ -13,7 +13,7 @@ tool-цикл агента держит HTTP-соединение и ворке�
 - Persist задачи — в памяти процесса, не в Supabase/Redis. Переживёт процесс
   столько же, сколько синхронные сессии переживали раньше (т.е. не переживёт).
 - Доставка результата — только poll по task_id, не webhook (см.
-  docs/SCALING_PLAN.md §4.1 — webhook_url уже заложен в схему api_clients,
+  docs/mts/SCALING_PLAN.md §4.1 — webhook_url уже заложен в схему api_clients,
   сюда пока не подключаю).
 - Auth и тесты — не здесь, см. src/api/hermes_async_routes.py.
 

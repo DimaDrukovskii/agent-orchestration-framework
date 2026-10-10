@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src/ src/
 COPY data/ data/
+COPY tenants/ tenants/
 COPY demo/ demo/
 
 # Переменные окружения приходят из docker-compose `environment:` (или -e при
