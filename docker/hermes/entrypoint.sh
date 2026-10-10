@@ -29,6 +29,7 @@ model:
   provider: custom
   base_url: https://polza.ai/api/v1
   api_key: "${POLZA_API_KEY}"
+  context_length: ${HERMES_CONTEXT_LENGTH:-200000}
 YAML
 
 exec hermes gateway run
