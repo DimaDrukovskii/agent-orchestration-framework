@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     #  - llm_max_history_messages: сколько последних сообщений шлём модели;
     #  - llm_prompt_cache: для Claude на Polza помечаем системный промпт
     #    cache_control — повторное чтение дешевле в 10 раз.
-    llm_max_tokens: int = 300
+    llm_max_tokens: int = 700
     llm_closing_max_tokens: int = 200
     llm_max_history_messages: int = 12
     llm_prompt_cache: bool = True

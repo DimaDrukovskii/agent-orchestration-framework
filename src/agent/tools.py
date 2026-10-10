@@ -60,6 +60,21 @@ TOOLS_SCHEMA = [
             },
             "required": ["department", "reason"]
         }
+    },
+    {
+        "name": "send_to_chat",
+        "description": (
+            "Отправить абоненту в чат подробности, которые плохо слушать голосом: цены и "
+            "сравнение тарифов, больше двух шагов инструкции, ссылки, номера. Голосом при "
+            "этом скажи одной фразой, что отправила, и не зачитывай текст."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Готовое сообщение для чата, без markdown"}
+            },
+            "required": ["text"]
+        }
     }
 ]
 
@@ -141,8 +156,17 @@ def transfer_to_department(department: str, reason: str) -> Dict[str, Any]:
     }
 
 
+CHAT_MESSAGE_MAX_CHARS = 1500
+
+
+def send_to_chat(text: str) -> Dict[str, Any]:
+    """Голос -> чат: текст попадёт абоненту через канал (виджет, Telegram) — см. hermes_routes."""
+    return {"action": "chat", "text": text.strip()[:CHAT_MESSAGE_MAX_CHARS], "status": "отправлено в чат"}
+
+
 # Диспетчер вызовов
 TOOL_HANDLERS = {
+    "send_to_chat": lambda inp: send_to_chat(inp["text"]),
     "search_knowledge_base": lambda inp: search_knowledge_base(inp["query"]),
     "check_account_status": lambda inp: check_account_status(inp["phone"]),
     "transfer_to_department": lambda inp: transfer_to_department(inp["department"], inp["reason"]),

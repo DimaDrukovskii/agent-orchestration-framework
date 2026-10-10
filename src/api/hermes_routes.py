@@ -40,6 +40,7 @@ class HermesDialogResponse(BaseModel):
     session_id: str
     agent_response: str
     transfer: Optional[Dict[str, Any]] = None
+    chat: List[str] = []  # сообщения, которые агент отправил абоненту в чат (голос -> чат)
     persisted: bool = True
 
 
@@ -160,6 +161,18 @@ async def _persist_turn(
     return persisted
 
 
+async def _deliver_chat(session_id: str, messages: List[str]) -> None:
+    """Доставить сообщения чата во внешний канал. Новый канал — ещё одна ветка здесь."""
+    if not messages or not settings.telegram_chat_id:
+        return
+    try:
+        from src.services.telegram import send_message
+        for text in messages:
+            await send_message(settings.telegram_chat_id, text)
+    except Exception as e:
+        logger.error(f"[{session_id}] Chat delivery error: {type(e).__name__}")
+
+
 @router.post("/hermes/dialog", response_model=HermesDialogResponse)
 async def hermes_dialog(request: HermesDialogRequest):
     """
@@ -184,10 +197,14 @@ async def hermes_dialog(request: HermesDialogRequest):
             pending_transfer=result["pending_transfer"]
         )
 
+        chat = result.get("chat", [])
+        await _deliver_chat(request.session_id, chat)
+
         return HermesDialogResponse(
             session_id=request.session_id,
             agent_response=result["response"],
             transfer=result["pending_transfer"],
+            chat=chat,
             persisted=persisted
         )
 

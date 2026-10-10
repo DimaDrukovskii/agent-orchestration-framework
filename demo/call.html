@@ -369,6 +369,29 @@
         color: var(--color-ink);
       }
 
+      .chat {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 150px;
+        margin-bottom: 12px;
+        overflow-y: auto;
+      }
+
+      .chat[hidden] {
+        display: none;
+      }
+
+      .chat-msg {
+        padding: 8px 12px;
+        border-radius: 14px 14px 14px 4px;
+        background: rgba(127, 127, 127, 0.16);
+        color: var(--color-ink);
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+      }
+
       .notice {
         margin-bottom: 12px;
         padding: 10px 12px;
@@ -575,6 +598,8 @@
           </div>
         </div>
 
+        <div class="chat" id="chat" aria-label="Сообщения в чат" hidden></div>
+
         <div class="notice" id="notice" hidden></div>
 
         <div class="controls">
@@ -681,6 +706,7 @@
       const captionWho = $("captionWho");
       const captionText = $("captionText");
       const noticeEl = $("notice");
+      const chatEl = $("chat");
       const launcherText = $("launcherText");
       const startBtn = $("startBtn");
       const endBtn = $("endBtn");
@@ -750,6 +776,20 @@
         captionEl.hidden = !text;
         captionWho.textContent = who;
         captionText.textContent = text;
+      }
+
+      // голос -> чат: то, что агент отправил текстом (цены, шаги, ссылки), остаётся на экране
+      function addChat(messages) {
+        for (const text of messages) {
+          const bubble = document.createElement("div");
+          bubble.className = "chat-msg";
+          bubble.textContent = text;
+          chatEl.appendChild(bubble);
+        }
+        if (messages.length) {
+          chatEl.hidden = false;
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }
       }
 
       function showNotice(html) {
@@ -1412,7 +1452,7 @@
           if (response.status === 401) return { fatal: "Неверный API-ключ (X-API-Key)." };
           if (!response.ok) return { reply: FALLBACK_REPLY, failed: true };
           const data = await response.json();
-          return { reply: data.agent_response || FALLBACK_REPLY, transfer: data.transfer || null };
+          return { reply: data.agent_response || FALLBACK_REPLY, transfer: data.transfer || null, chat: data.chat || [] };
         } catch (e) {
           return { reply: FALLBACK_REPLY, failed: true };
         } finally {
@@ -1439,6 +1479,7 @@
           return;
         }
 
+        addChat(result.chat || []);
         showCaption("Алина", result.reply);
         setPhase("speaking");
         await speak(activeCall, result.reply, { interruptible: !result.transfer });
@@ -1494,6 +1535,8 @@
 
         timerEl.textContent = "";
         showCaption("", "");
+        chatEl.textContent = "";
+        chatEl.hidden = true;
         showNotice("");
         setMuted(false);
         setPhase("connecting");

@@ -244,6 +244,7 @@ class HermesAgent:
         """
         working_messages = messages.copy()  # полная история: идёт в хранилище и транскрипт
         pending_transfer = None
+        chat_messages: List[str] = []  # что агент отправил абоненту в чат за эту реплику
 
         if count_user_turns(working_messages) > settings.llm_max_turns:
             logger.warning(f"Turn cap reached ({settings.llm_max_turns}), phone={mask_phone(caller_phone)}")
@@ -286,7 +287,8 @@ class HermesAgent:
                 return {
                     "response": final_text,
                     "messages": working_messages,
-                    "pending_transfer": pending_transfer
+                    "pending_transfer": pending_transfer,
+                    "chat": chat_messages,
                 }
 
             working_messages.append({
@@ -302,6 +304,8 @@ class HermesAgent:
 
                 if tool_call.function.name == "transfer_to_department":
                     pending_transfer = result
+                elif tool_call.function.name == "send_to_chat" and result.get("text"):
+                    chat_messages.append(result["text"])
 
                 working_messages.append({
                     "role": "tool",
@@ -329,7 +333,8 @@ class HermesAgent:
         return {
             "response": final_text,
             "messages": working_messages,
-            "pending_transfer": pending_transfer
+            "pending_transfer": pending_transfer,
+            "chat": chat_messages,
         }
 
     async def run_streaming(

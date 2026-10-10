@@ -53,7 +53,7 @@ def test_hermes_dialog_success(monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert set(data.keys()) == {"session_id", "agent_response", "transfer", "persisted"}
+    assert set(data.keys()) == {"session_id", "agent_response", "transfer", "chat", "persisted"}
     assert data["session_id"] == "s2"
     assert isinstance(data["agent_response"], str) and data["agent_response"]
     assert data["transfer"] is None
