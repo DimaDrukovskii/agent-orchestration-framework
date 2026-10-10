@@ -22,17 +22,16 @@
 
 ```
 src/                 ядро (FastAPI): агент, инструменты, сессии, STT/TTS, клиент (tenant)
-demo/                виджет call.html (встраиваемый), лендинг index.html, stt_test.html (проверка распознавания)
+demo/                виджет call.html (встраиваемый), лендинг index.html, tools/ (служебные: connect, history, stt_test)
 tenants/
   mts/               данные МТС: prompt.md, knowledge/, site_map.json, tenant.json
   _template/         заготовка для новой компании
-docker/              Dockerfile, docker-compose.yml, hermes/ (необязательный контейнер Hermes Agent)
-tests/               автотесты (99), без сетевых вызовов
+docker/              Dockerfile, docker-compose.yml (приложение и Redis)
+tests/               автотесты (96), без сетевых вызовов
 scripts/             load_test.py (нагрузка без платных запросов), test_call.py (сценарии текстом)
 docs/
   website_side_bar/  продукт: архитектура, переменные окружения, подключение модели, голосовой конвейер, БД
   mts/               проект МТС: план Трека 1, контракт интеграции, комплаенс, масштабирование, результаты
-  archive/           старые планы и заметки сессий (для истории)
 ```
 
 ## Запуск
@@ -53,4 +52,4 @@ python3 -m pytest tests -q                    # автотесты
 2. В `.env`: `TENANT=<имя>`, перезапустить контейнер.
 3. Подключить свой биллинг/CRM в `check_account_status` ([src/agent/tools.py](src/agent/tools.py)).
 
-Ветки: `website_side_bar` (структура продукта и проекта МТС), `feature/call-ui` (история разработки).
+Ветки: `feature/call-ui` (рабочая), `docs/track1-plan` (последняя принятая версия, только fast-forward), `website_side_bar` (снимок разделения на продукт и проект МТС).

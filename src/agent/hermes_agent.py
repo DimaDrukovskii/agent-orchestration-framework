@@ -4,8 +4,7 @@ settings.llm_provider:
   - "anthropic" — прямой Claude API (tool_use/tool_result блоки)
   - "polza"     — OpenAI-совместимый шлюз polza.ai (tool_calls, role="tool")
 
-В отличие от orchestrator.py (один проход: запрос → ответ), этот агент может
-САМ решить вызвать tool (посмотреть базу знаний, проверить счёт), получить
+Агент может САМ решить вызвать tool (посмотреть базу знаний, проверить счёт), получить
 результат и только потом ответить — как живой оператор, который сверяется
 со своей системой по ходу разговора.
 """
@@ -18,7 +17,7 @@ from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_LINKS_RULE, HERMES
 from src.utils import logger, mask_phone
 
 # провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
-OPENAI_COMPAT_PROVIDERS = ("polza", "local", "hermes_agent")
+OPENAI_COMPAT_PROVIDERS = ("polza", "local")
 MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агента
 CLOSING_PROMPT = "Коротко скажи абоненту, что происходит дальше (своими словами, не как бот)."
 
@@ -83,14 +82,7 @@ class HermesAgent:
         if self.provider in OPENAI_COMPAT_PROVIDERS:
             from openai import AsyncOpenAI
 
-            if self.provider == "hermes_agent":
-                self.client = AsyncOpenAI(
-                    api_key=settings.hermes_agent_api_key or "none",
-                    base_url=settings.hermes_agent_base_url,
-                    timeout=settings.hermes_agent_timeout_seconds,
-                )
-                self.model = settings.hermes_agent_model
-            elif self.provider == "local":
+            if self.provider == "local":
                 self.client = AsyncOpenAI(
                     api_key=settings.local_api_key,
                     base_url=settings.local_base_url,
@@ -254,7 +246,7 @@ class HermesAgent:
             working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
             return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
 
-        preretrieval = settings.llm_kb_preretrieval and self.provider != "hermes_agent"
+        preretrieval = settings.llm_kb_preretrieval
         snippet = ""
         if preretrieval:
             last_user = next((m["content"] for m in reversed(working_messages)
@@ -275,10 +267,7 @@ class HermesAgent:
                 "messages": [self.system_message()]
                 + with_kb_context(trim_history(working_messages, settings.llm_max_history_messages), snippet),
             }
-            # Hermes Agent ведёт свой цикл со своими инструментами и наши tools
-            # не вызывает — схему ему не отправляем (инструменты МТС: отдельный шаг).
-            if self.provider != "hermes_agent":
-                request["tools"] = tools
+            request["tools"] = tools
             request.update(self._extra_body())
             response = await self.client.chat.completions.create(**request)
             log_usage(response, self.model)

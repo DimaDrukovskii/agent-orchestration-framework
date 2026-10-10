@@ -10,8 +10,8 @@ Claude API, проверено руками через `curl` и ручное о
 |---|---|
 | `GET /health` | 200, `{"status":"ok",...}` |
 | `GET /demo/` (чат-страница через uvicorn, тот же origin) | 200, страница отдаётся |
-| `GET /demo/connect.html` | 200 |
-| `GET /demo/history.html` | 200 |
+| `GET /demo/tools/connect.html` | 200 |
+| `GET /demo/tools/history.html` | 200 |
 | `POST /api/hermes/dialog` без `X-API-Key` | 401 |
 | `POST /api/hermes/dialog` с неверным `X-API-Key` | 401, `{"error":{"code":"invalid_api_key",...}}` |
 | `POST /api/hermes/dialog` с верным ключом, но фиктивным `ANTHROPIC_API_KEY` | 500 — подтверждает, что путь до Claude API дёргается, но сам Claude не отвечает без реального ключа |
@@ -68,7 +68,5 @@ python scripts/test_call.py
 ## PII в логах (п.7)
 
 `grep -rn "logger\." src/ | grep -i "caller_phone\|user_message\|phone"` нашёл 6 мест,
-где номер абонента писался в логи в открытом виде (`hermes_agent.py`,
-`agent/tools.py`, `api/routes.py`, `services/llm.py` ×2). Все замаскированы через
-новый `src.utils.mask_phone` (`+7999***4567`). `user_message` в логи построчно
-больше не пишется в `api/routes.py` (убрана отдельная строка лога с текстом).
+где номер абонента писался в логи в открытом виде (в агенте, инструментах и двух устаревших модулях, которые позже удалены). Все замаскированы через
+`src.utils.mask_phone` (`+7999***4567`). `user_message` в логи построчно не пишется.

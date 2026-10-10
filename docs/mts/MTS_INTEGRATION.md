@@ -1,229 +1,87 @@
-# MTS Integration Guide
+# Интеграция с МТС: контракт API
 
-## API Endpoint
+Один рабочий контракт: `POST /api/hermes/dialog`. История диалога хранит сервер по `session_id`, передавать её не нужно.
+Каждый запрос требует заголовок `X-API-Key` (значение `AGENT_API_KEY`).
 
-```
-POST /api/dialog
-```
-
-## Request Format
+## Запрос
 
 ```json
 {
-  "session_id": "string (уникальный ID звонка/сессии)",
-  "caller_phone": "string (номер абонента, например +79999999999)",
-  "user_message": "string (что сказал/написал абонент)",
-  "history": [
-    {
-      "role": "user",
-      "content": "первое сообщение абонента"
-    },
-    {
-      "role": "assistant",
-      "content": "ответ агента"
-    }
-  ]
-}
-```
-
-## Response Format
-
-```json
-{
-  "session_id": "string",
-  "agent_response": "string (ответ ИИ)",
-  "action": "resolve|transfer|escalate",
-  "department": "техподдержка|биллинг|продажи|менеджер",
-  "confidence": 0.75,
-  "history": [
-    {
-      "role": "user",
-      "content": "..."
-    },
-    {
-      "role": "assistant",
-      "content": "..."
-    }
-  ]
-}
-```
-
-## Integration Steps
-
-### 1. При входящем звонке (First Message)
-
-МТС отправляет:
-```json
-{
-  "session_id": "twilio_123456789",
+  "session_id": "уникальный id звонка или сессии",
   "caller_phone": "+79991234567",
-  "user_message": "Привет, мне нужна помощь",
-  "history": []
+  "user_message": "что сказал или написал абонент"
 }
 ```
 
-Мы отвечаем:
-```json
-{
-  "session_id": "twilio_123456789",
-  "agent_response": "Добро пожаловать в МТС! Как я вам помочь?",
-  "action": "resolve",
-  "department": null,
-  "confidence": 0.8,
-  "history": [
-    {"role": "user", "content": "Привет, мне нужна помощь"},
-    {"role": "assistant", "content": "Добро пожаловать в МТС! Как я вам помочь?"}
-  ]
-}
-```
+Необязательное поле `model_profile`: `"default"` (модель из `LLM_PROVIDER`) или `"local"` (локальная модель).
 
-### 2. При продолжении диалога (Follow-up Messages)
-
-МТС отправляет историю + новое сообщение:
-```json
-{
-  "session_id": "twilio_123456789",
-  "caller_phone": "+79991234567",
-  "user_message": "У меня проблемы с интернетом",
-  "history": [
-    {"role": "user", "content": "Привет, мне нужна помощь"},
-    {"role": "assistant", "content": "Добро пожаловать в МТС! Как я вам помочь?"}
-  ]
-}
-```
-
-Мы отвечаем с обновленной историей.
-
-### 3. При завершении (когда action = transfer/escalate)
+## Ответ
 
 ```json
 {
-  "session_id": "twilio_123456789",
-  "agent_response": "Переводим вас на техническую поддержку...",
-  "action": "transfer",
-  "department": "техподдержка",
-  "confidence": 0.9,
-  "history": [...]  // вся история сохранена
+  "session_id": "call_001",
+  "agent_response": "Тариф RED стоит 1 200 рублей в месяц, подключить?",
+  "transfer": null,
+  "chat": [],
+  "links": [{"title": "Оформить eSIM", "url": "https://..."}],
+  "persisted": true
 }
 ```
 
-МТС должна:
-- Сохранить историю на своей стороне
-- Перевести звонок на соответствующий отдел
-- Передать историю диалога оператору
+| Поле | Значение |
+|---|---|
+| `agent_response` | текст реплики; озвучивается через `POST /api/tts` |
+| `transfer` | `null` или `{department, reason}`: агент решил передать звонок человеку; сам перевод делает инфраструктура МТС |
+| `links` | разделы сайта, которые агент показал абоненту кнопками (`https://`); разделы задаёт `tenants/mts/site_map.json` |
+| `chat` | тексты, отправленные абоненту в чат; по умолчанию канал выключен (`CHAT_ENABLED=false`), список пуст |
+| `persisted` | `false`, если запись разговора в базу не удалась (ответ абоненту при этом выдаётся) |
 
-## Deployment
+## Порядок вызовов
 
-### Локально
+1. Первая реплика абонента: запрос с новым `session_id`, в ответе реплика агента.
+2. Следующие реплики: тот же `session_id`, только новый `user_message`.
+3. Если пришёл `transfer`: сохранить историю (`GET /api/hermes/dialog/{session_id}/history`), перевести звонок на отдел и передать историю оператору.
+
+Телефонный канал (распознавание речи на их стороне или через наш `POST /api/stt`, озвучка через `POST /api/tts`) строится вокруг
+этих вызовов.
+
+## Ошибки
+
+| Код | Что значит | Что делать |
+|---|---|---|
+| `401` | нет или неверен `X-API-Key` | проверить ключ |
+| `503` `session_store_unavailable` | недоступно хранилище сессий | повторить один раз |
+| `503` `agent_timeout` | модель не ответила вовремя | повторить один раз, затем передать звонок оператору |
+| `503` `model_not_allowed` | модель не разрешена на ключе провайдера (`retryable: false`) | сменить модель или ключ |
+| `503` `insufficient_balance` | у ключа провайдера закончился лимит (`retryable: false`) | пополнить или поднять лимит |
+| `500` | прочие сбои | передать звонок оператору вручную |
+
+Формат ошибки: `{"detail": {"error": {"code", "message", "retryable"}}}`.
+
+## Примеры
 
 ```bash
-source venv/bin/activate
-uvicorn src.main:app --reload
+curl -X POST http://localhost:8000/api/hermes/dialog \
+  -H "Content-Type: application/json" -H "X-API-Key: $AGENT_API_KEY" \
+  -d '{"session_id":"call_001","caller_phone":"+79999999999","user_message":"Сколько стоит тариф RED?"}'
 ```
 
-Доступно на `http://localhost:8000/api/dialog`
-
-### В Docker
-
-```bash
-docker-compose -f docker/docker-compose.yml up
-```
-
-### В продакшене
-
-1. Убедись, что `BASE_URL` правильно настроена (.env)
-2. Используй HTTPS в production
-3. Добавь аутентификацию (API key в header)
-4. Настрой rate limiting (Redis)
-
-## Error Handling
-
-Если сервер вернул ошибку (500):
-```json
-{
-  "detail": "Error message"
-}
-```
-
-Рекомендуется:
-1. Retry один раз (если временная ошибка)
-2. Передать звонок оператору вручную (fallback)
-
-## Rate Limiting (опционально)
-
-Для production добавь в Redis:
-```python
-# Max N диалогов в минуту
-RATE_LIMIT_CALLS_PER_MINUTE = 100
-```
-
-## Monitoring
-
-Смотри логи:
-```bash
-docker logs mts-call-agent
-```
-
-Или запрос статистики:
-```bash
-curl http://localhost:8000/api/dialog/history/{session_id}
-```
-
-## Примеры запросов
-
-**Python:**
 ```python
 import requests
 
 response = requests.post(
-    "http://localhost:8000/api/dialog",
-    json={
-        "session_id": "call_001",
-        "caller_phone": "+79999999999",
-        "user_message": "Помощь!",
-        "history": []
-    }
+    "http://localhost:8000/api/hermes/dialog",
+    headers={"X-API-Key": "..."},
+    json={"session_id": "call_001", "caller_phone": "+79999999999", "user_message": "Помощь!"},
 )
-print(response.json())
+print(response.json()["agent_response"])
 ```
 
-**cURL:**
+## Развёртывание
+
 ```bash
-curl -X POST http://localhost:8000/api/dialog \
-  -H "Content-Type: application/json" \
-  -d '{"session_id":"call_001","caller_phone":"+79999999999","user_message":"Помощь!","history":[]}'
+docker compose --env-file .env -f docker/docker-compose.yml up -d
 ```
 
-**JavaScript:**
-```javascript
-const response = await fetch('/api/dialog', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    session_id: 'call_001',
-    caller_phone: '+79999999999',
-    user_message: 'Помощь!',
-    history: []
-  })
-});
-
-const data = await response.json();
-console.log(data.agent_response);
-```
-
-
-## Поле `chat` в ответе `POST /api/hermes/dialog` (голос → чат)
-
-Кроме `agent_response` и `transfer` ответ содержит `chat` — список текстов, которые агент отправил абоненту
-в чат (цены, сравнение тарифов, шаги инструкции, ссылки). Голосом агент при этом говорит только суть.
-Пустой список — в чат ничего не отправлялось. Если задан `TELEGRAM_CHAT_ID`, тексты дополнительно уходят в Telegram.
-
-Ошибки провайдера модели: `503` с `error.code` = `model_not_allowed` (модель не разрешена на ключе) или
-`insufficient_balance` (закончился лимит), оба с `retryable: false`.
-
-## Поле `links` в ответе (показ разделов сайта)
-
-`links` — список `{title, url}`: разделы сайта, которые агент показал абоненту кнопкой-ссылкой (например, оформление eSIM).
-Виджет рисует их кнопками в ленте диалога, только `https://`, в новой вкладке. Разделы задаёт файл
-`tenants/mts/site_map.json` (`id`, `title`, `url`, `when` — когда показывать); нет файла — инструмента `show_section` нет.
-Под другую компанию меняется только этот файл.
+Переменные окружения: [../website_side_bar/ENVIRONMENT.md](../website_side_bar/ENVIRONMENT.md). В продакшене нужны HTTPS, отдельный
+ключ на клиента и ограничение числа запросов; это решается на стороне МТС или перед сервисом (см. [SCALING_PLAN.md](SCALING_PLAN.md)).

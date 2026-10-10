@@ -29,18 +29,6 @@ async def probe_local() -> bool:
         return False
 
 
-async def probe_hermes_agent() -> bool:
-    """Контейнер Hermes Agent отвечает на GET /models с нашим ключом."""
-    url = f"{settings.hermes_agent_base_url.rstrip('/')}/models"
-    headers = {"Authorization": f"Bearer {settings.hermes_agent_api_key}"}
-    try:
-        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
-            response = await client.get(url, headers=headers)
-            return response.status_code == 200
-    except Exception:
-        return False
-
-
 def _default_model() -> str:
     if settings.llm_provider == "polza":
         return settings.polza_model
@@ -54,5 +42,4 @@ async def llm_status():
     return {
         "default": {"provider": settings.llm_provider, "model": _default_model()},
         "local": {"available": await probe_local(), "model": settings.local_model},
-        "hermes_agent": {"available": await probe_hermes_agent(), "model": settings.hermes_agent_model},
     }

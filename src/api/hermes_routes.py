@@ -18,7 +18,7 @@ _agents: Dict[str, HermesAgent] = {}  # профили кроме дефолтн
 
 
 def agent_for(model_profile: Optional[str]) -> HermesAgent:
-    """"default"/None — LLM_PROVIDER, "local" — локальный сервер, "hermes_agent" — контейнер Hermes Agent."""
+    """"default"/None — LLM_PROVIDER, "local" — локальный сервер."""
     if model_profile in (None, "default"):
         return hermes
     if model_profile not in _agents:
@@ -33,7 +33,7 @@ class HermesDialogRequest(BaseModel):
     session_id: str
     caller_phone: str
     user_message: str
-    model_profile: Optional[Literal["default", "local", "hermes_agent"]] = None
+    model_profile: Optional[Literal["default", "local"]] = None
 
 
 class HermesDialogResponse(BaseModel):
@@ -62,7 +62,7 @@ def _to_plain(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Привести историю к JSON-сериализуемому виду перед записью в Redis.
 
-    hermes_agent.run() добавляет в historию response.content прямо как
+    HermesAgent.run() добавляет в историю response.content прямо как
     объекты Anthropic SDK (TextBlock/ToolUseBlock) — это ок для памяти
     процесса, но не для json.dumps в CacheService. Переводим в plain dict,
     Anthropic messages API их принимает обратно так же, как объекты.
@@ -228,7 +228,7 @@ async def hermes_dialog(request: HermesDialogRequest):
 async def hermes_dialog_stream(request: HermesDialogRequest):
     """
     Streaming-версия — для живого эффекта "печатает в реальном времени".
-    Без tool calls (см. ограничение в hermes_agent.run_streaming).
+    Без tool calls (см. ограничение в HermesAgent.run_streaming).
     """
     try:
         history = await _get_session(request.session_id)

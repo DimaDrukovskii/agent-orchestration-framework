@@ -1,93 +1,49 @@
-# MTS Call Agent Architecture
+# Архитектура
 
-## Multi-turn Dialog Flow
+## Поток одной реплики
 
 ```
-Client (MTS АТС/API)
-  ↓
-POST /api/dialog {session_id, caller_phone, user_message, history}
-  ↓
-[CallOrchestrator.dialog()]
+виджет (demo/call.html)
+  │ микрофон → POST /api/stt (gpt-4o-transcribe)   текст → напрямую
+  ▼
+POST /api/hermes/dialog {session_id, caller_phone, user_message}
   │
-  ├─ 1. Initialize or get session
-  │  └─ sessions[session_id] → {caller_phone, messages: [...]}
-  │
-  ├─ 2. Append user_message to history
-  │  └─ messages = [...previous messages, {role: "user", content: user_message}]
-  │
-  ├─ 3. LLMService.run_agent_dialog(messages)
-  │  └─ Claude API → agent_response (with full context)
-  │
-  ├─ 4. LLMService.determine_action_from_dialog()
-  │  └─ Analyze messages → action (transfer|escalate|resolve)
-  │
-  ├─ 5. Update session history
-  │  └─ messages.append({role: "assistant", content: agent_response})
-  │
-  ├─ 6. If action is terminal → save_dialog()
-  │  └─ Supabase → persist full conversation
-  │
-  └─ 7. Return DialogResponse
-       └─ {session_id, agent_response, action, department, confidence, history}
+  ├─ история сессии из кэша (Redis или SQLite), TTL HERMES_SESSION_TTL_SECONDS
+  ├─ HermesAgent.run(): цикл «модель → инструмент → модель» (до MAX_TOOL_ITERATIONS)
+  │    ├─ промпт клиента: tenants/<TENANT>/prompt.md (+ правило ссылок, если есть site_map.json)
+  │    ├─ предвыборка из базы знаний клиента вшивается в запрос (kb_context)
+  │    └─ инструменты: search_knowledge_base, check_account_status, transfer_to_department, show_section
+  ├─ история обратно в кэш; запись звонка в таблицу calls (Supabase или SQLite)
+  └─ ответ {agent_response, transfer, chat, links, persisted}
+  ▼
+POST /api/tts (Polza ElevenLabs) → звук в виджет
 ```
 
-## Components
+## Модули
 
-### API Layer (`src/api/`)
-- **routes.py**: FastAPI endpoints
-- **models.py**: Pydantic request/response schemas
+| Слой | Файлы | Назначение |
+|---|---|---|
+| API | `src/api/hermes_routes.py` | диалог, потоковая версия, история; ошибки провайдера → 503 с кодами |
+| | `src/api/stt_routes.py`, `tts_routes.py` | распознавание и озвучка |
+| | `src/api/tenant_routes.py`, `llm_routes.py`, `auth.py` | подписи клиента для виджета, доступные модели, `X-API-Key` |
+| Агент | `src/agent/hermes_agent.py` | цикл с инструментами, три провайдера (anthropic, polza, local), контроль расходов |
+| | `src/agent/hermes_prompts.py`, `tools.py` | промпт из `tenants/`, инструменты и поиск по базе знаний |
+| Сервисы | `src/services/stt.py`, `tts.py`, `cache.py`, `storage.py`, `sqlite_store.py`, `telegram.py` | голос, сессии, хранение, уведомление о переводе |
+| Клиент | `src/tenant.py`, `tenants/<имя>/` | всё, что отличает одну компанию от другой |
+| Виджет | `demo/call.html` | панель с кругом звонка, лентой и полем ввода; `/api/tenant` задаёт имя и приветствие |
 
-### Agent Core (`src/agent/`)
-- **orchestrator.py**: Main logic coordinator
-- **prompts.py**: System/few-shot prompts
+## Масштабирование
 
-### Services (`src/services/`)
-- **llm.py**: Claude API wrapper
-- **audio.py**: Whisper STT
-- **storage.py**: Supabase persistence
-- **cache.py**: Redis session/rate-limiting
+Сервер не держит состояния в процессе: сессии в Redis, запросы к модели асинхронные. Узкое место не наш код, а лимиты
+провайдера модели и озвучки. Проверка: `PYTHONPATH=. python3 scripts/load_test.py 200 3 2.5` (200 одновременных звонков с имитацией
+модели, ошибок ноль). План для МТС: [../mts/SCALING_PLAN.md](../mts/SCALING_PLAN.md).
 
-### Utils (`src/utils/`)
-- **logger.py**: Structured logging
-- **errors.py**: Custom exceptions
+## Устойчивость
 
-## Execution Flow
+- Redis или база недоступны: `503 session_store_unavailable`, повторяемая ошибка.
+- Запись в Supabase не удалась: ответ абоненту всё равно выдаётся, `persisted: false`.
+- Модель не отвечает: `503 agent_timeout`; нет доступа или лимита: `model_not_allowed`, `insufficient_balance` без повторов.
+- Распознавание на сервере упало: виджет переходит на распознавание браузера.
+- При старте в журнал пишется ошибка, если `POLZA_MODEL` указывает на модель распознавания или озвучки, а не чата.
 
-### Sync (MVP)
-1. Receive request → process sequentially → return response
-
-### Async (Optimized)
-1. Queue call → return call_id immediately
-2. Process async → store in cache/db
-3. Client polls `/call_status/{call_id}` for result
-
-## Database Schema (Supabase)
-
-```sql
-CREATE TABLE calls (
-    id UUID PRIMARY KEY,
-    call_id TEXT UNIQUE,
-    caller_phone TEXT,
-    transcript TEXT,
-    agent_response TEXT,
-    action TEXT,
-    confidence FLOAT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX calls_caller_phone ON calls(caller_phone);
-CREATE INDEX calls_created_at ON calls(created_at);
-```
-
-## Rate Limiting (Redis)
-
-- Per-phone rate: 10 calls/minute
-- Per-IP rate: 100 calls/hour
-- Session state: TTL 30min
-
-## Error Handling
-
-- **AudioTranscriptionError**: Fallback to text input
-- **LLMError**: Return generic response
-- **StorageError**: Continue without persistence
-- **CacheError**: Skip caching, continue
+Схема базы: [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).

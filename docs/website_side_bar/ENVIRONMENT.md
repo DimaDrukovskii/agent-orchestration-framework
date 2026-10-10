@@ -7,7 +7,7 @@
 | Переменная | Где используется | Статус |
 |---|---|---|
 | `LLM_PROVIDER` | `src/agent/hermes_agent.py` | `anthropic` (дефолт) \| `polza` — модель берётся у Polza AI |
-| `ANTHROPIC_API_KEY` | `src/services/llm.py`, `src/agent/hermes_agent.py` | нужен при `LLM_PROVIDER=anthropic` |
+| `ANTHROPIC_API_KEY` | `src/agent/hermes_agent.py` | нужен при `LLM_PROVIDER=anthropic` |
 | `POLZA_API_KEY` | `src/agent/hermes_agent.py`, `src/services/tts.py` | нужен при `LLM_PROVIDER=polza` и при `TTS_PROVIDER=polza` |
 
 ## Модель, голос, температура
@@ -33,7 +33,7 @@
 | `CACHE_BACKEND` | `sqlite` | `sqlite` \| `redis` (тогда нужен `REDIS_URL`) |
 | `STORAGE_BACKEND` | `sqlite` | `sqlite` \| `supabase` (тогда нужны `SUPABASE_URL`, `SUPABASE_KEY`; схема — `docs/website_side_bar/DATABASE_SCHEMA.md`) |
 | `SQLITE_PATH` | `data/hermes.db` | путь к файлу, относительный — от корня репо |
-| `OPENAI_API_KEY` | `""` | только legacy-путь с Whisper (`src/services/audio.py`) |
+| `OPENAI_API_KEY` | `""` | не используется, можно не задавать |
 
 ## Есть дефолты в коде — можно не трогать
 

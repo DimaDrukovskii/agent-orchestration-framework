@@ -25,14 +25,6 @@ class Settings(BaseSettings):
     local_api_key: str = "local"  # серверу обычно всё равно, но поле обязательно
     local_timeout_seconds: int = 120  # локальная модель на ноутбуке отвечает медленнее облака
 
-    # Настоящий Hermes Agent (Nous Research) в соседнем контейнере: его
-    # OpenAI-совместимый API-сервер (порт 8642). Ключ — API_SERVER_KEY
-    # контейнера, не короче 16 символов. Выбирается профилем "hermes_agent".
-    hermes_agent_base_url: str = "http://hermes:8642/v1"
-    hermes_agent_api_key: str = ""
-    hermes_agent_model: str = "hermes-agent"
-    hermes_agent_timeout_seconds: int = 120
-
     # Контроль расходов на LLM. Почти вся цена запроса — входные токены
     # (системный промпт + схемы инструментов + история), поэтому:
     #  - llm_max_tokens: потолок ответа (телефонная реплика короткая; он же
