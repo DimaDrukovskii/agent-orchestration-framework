@@ -97,6 +97,25 @@ def search_knowledge_base(query: str) -> str:
         return "Ошибка доступа к базе знаний."
 
 
+KB_CONTEXT_MAX_CHARS = 1500
+KB_MIN_WORD_LEN = 4  # короткие слова («не», «у», «как») совпадают с чем угодно
+
+
+def kb_context(user_text: str, max_chars: int = KB_CONTEXT_MAX_CHARS) -> str:
+    """
+    Фрагмент базы знаний под реплику абонента — для подстановки в запрос до
+    обращения к модели. Пустая строка, если ничего подходящего нет.
+    """
+    words = [w.strip(".,!?;:«»\"'()") for w in user_text.lower().split()]
+    query = " ".join(w for w in words if len(w) >= KB_MIN_WORD_LEN)
+    if not query:
+        return ""
+    found = search_knowledge_base(query)
+    if found.startswith(("Ничего не найдено", "Ошибка доступа")):
+        return ""
+    return found if len(found) <= max_chars else found[:max_chars] + "[…]"
+
+
 def check_account_status(phone: str) -> Dict[str, Any]:
     """
     Проверка счёта абонента.

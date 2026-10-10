@@ -13,7 +13,7 @@ settings.llm_provider:
 import json
 from typing import List, Dict, Any, AsyncGenerator, Optional
 from src.config import settings
-from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool
+from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context
 from src.agent.hermes_prompts import HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
@@ -37,6 +37,30 @@ def trim_history(messages: List[Dict[str, Any]], limit: int) -> List[Dict[str, A
     if start >= len(messages):  # в хвосте нет реплики абонента — не обрезаем вслепую
         return list(messages)
     return list(messages[start:])
+
+
+TURN_CAP_REPLY = (
+    "Мы уже долго разговариваем, давайте я соединю вас с оператором, "
+    "он разберёт всё подробно. Соединяю?"
+)
+KB_BLOCK = "\n\n[СПРАВКА ИЗ БАЗЫ ЗНАНИЙ — отвечай по ней, ничего не выдумывай]\n{snippet}"
+
+
+def with_kb_context(messages: List[Dict[str, Any]], snippet: str) -> List[Dict[str, Any]]:
+    """Копия сообщений, где к последней реплике абонента добавлена справка. Исходный список не меняется."""
+    if not snippet:
+        return list(messages)
+    result = list(messages)
+    for idx in range(len(result) - 1, -1, -1):
+        msg = result[idx]
+        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+            result[idx] = {**msg, "content": msg["content"] + KB_BLOCK.format(snippet=snippet)}
+            break
+    return result
+
+
+def count_user_turns(messages: List[Dict[str, Any]]) -> int:
+    return sum(1 for m in messages if m.get("role") == "user")
 
 
 def log_usage(response: Any, model: str) -> None:
@@ -215,6 +239,20 @@ class HermesAgent:
         working_messages = messages.copy()  # полная история: идёт в хранилище и транскрипт
         pending_transfer = None
 
+        if count_user_turns(working_messages) > settings.llm_max_turns:
+            logger.warning(f"Turn cap reached ({settings.llm_max_turns}), phone={mask_phone(caller_phone)}")
+            working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
+            return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
+
+        preretrieval = settings.llm_kb_preretrieval and self.provider != "hermes_agent"
+        snippet = ""
+        if preretrieval:
+            last_user = next((m["content"] for m in reversed(working_messages)
+                              if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+            snippet = kb_context(last_user)
+        tools = [t for t in TOOLS_SCHEMA_OPENAI
+                 if not (preretrieval and t["function"]["name"] == "search_knowledge_base")]
+
         for iteration in range(MAX_TOOL_ITERATIONS):
             logger.info(f"Hermes iteration {iteration + 1}, phone={mask_phone(caller_phone)}")
 
@@ -223,12 +261,12 @@ class HermesAgent:
                 "max_tokens": settings.llm_max_tokens,
                 "temperature": settings.llm_temperature,
                 "messages": [self.system_message()]
-                + trim_history(working_messages, settings.llm_max_history_messages),
+                + with_kb_context(trim_history(working_messages, settings.llm_max_history_messages), snippet),
             }
             # Hermes Agent ведёт свой цикл со своими инструментами и наши tools
             # не вызывает — схему ему не отправляем (инструменты МТС: отдельный шаг).
             if self.provider != "hermes_agent":
-                request["tools"] = TOOLS_SCHEMA_OPENAI
+                request["tools"] = tools
             response = await self.client.chat.completions.create(**request)
             log_usage(response, self.model)
 
