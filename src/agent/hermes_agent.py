@@ -300,7 +300,7 @@ class HermesAgent:
             yield {"type": "done", "result": {"response": TURN_CAP_REPLY, "messages": working, "pending_transfer": None, "chat": [], "links": []}}
             return
 
-        preretrieval = settings.llm_kb_preretrieval and self.provider != "hermes_agent"
+        preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
             last_user = next((m["content"] for m in reversed(working)
@@ -409,7 +409,7 @@ class HermesAgent:
             working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
             return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
 
-        preretrieval = settings.llm_kb_preretrieval and self.provider != "hermes_agent"
+        preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
             last_user = next((m["content"] for m in reversed(working_messages)

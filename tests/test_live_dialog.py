@@ -100,6 +100,22 @@ def test_hermes_agent_profile_gets_no_client_tools(monkeypatch):
     assert agent.model == settings.hermes_agent_model and "tools" not in sent[0]
 
 
+def test_hermes_agent_profile_gets_kb_snippet_in_the_request(monkeypatch):
+    # своих инструментов поиска у Hermes нет, поэтому справка из базы МТС подставляется в реплику
+    monkeypatch.setattr(settings, "hermes_agent_base_url", "http://hermes:8642/v1")
+    agent = HermesAgent("hermes_agent")
+    sent = []
+
+    async def create(**kwargs):
+        sent.append(kwargs)
+        return _stream_of(_chunk("Готово.", finish="stop"))
+
+    monkeypatch.setattr(agent.client.chat.completions, "create", create)
+    _collect(agent, [{"role": "user", "content": "как подключить роуминг за границей"}])
+    last_user = [m for m in sent[0]["messages"] if m["role"] == "user"][-1]["content"]
+    assert "СПРАВКА ИЗ БАЗЫ ЗНАНИЙ" in last_user and "roaming.md" in last_user
+
+
 # --- что услышал абонент ---------------------------------------------------------------------
 
 
