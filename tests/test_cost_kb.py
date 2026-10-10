@@ -124,3 +124,10 @@ def test_kb_matches_word_forms_and_ignores_unrelated_files(tmp_path, monkeypatch
     monkeypatch.setattr(tools, "KNOWLEDGE_DIR", str(tmp_path))
     snippet = tools.kb_context("Расскажите про тарифы RED")
     assert "750 рублей" in snippet
+
+
+def test_kb_keeps_short_latin_brand_names(tmp_path, monkeypatch):
+    (tmp_path / "conditions.md").write_text("# Условия\nУсловия смены тарифа: изменить тариф можно в приложении.", encoding="utf-8")
+    (tmp_path / "pricing.md").write_text("# Тарифы\nRED стоит 750 рублей в месяц.", encoding="utf-8")
+    monkeypatch.setattr(tools, "KNOWLEDGE_DIR", str(tmp_path))
+    assert "750 рублей" in tools.kb_context("Расскажите условия тарифа RED")

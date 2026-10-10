@@ -84,6 +84,11 @@ TOOLS_SCHEMA = [
 KB_CONTEXT_MAX_CHARS = 1500
 KB_TOOL_MAX_CHARS = 3000
 KB_MIN_WORD_LEN = 4  # короткие слова («не», «у», «как») совпадают с чем угодно
+
+
+def _is_searchable(word: str) -> bool:
+    """Длинные слова, а также короткие названия латиницей/цифрами («RED», «XL», «5G»)."""
+    return len(word) >= KB_MIN_WORD_LEN or (len(word) >= 2 and word.isascii())
 KB_STEM_LEN = 5  # «тарифы» / «тарифа» / «тарифов» находят один и тот же кусок
 KB_CHUNK_MAX_CHARS = 900
 KB_MAX_CHUNKS = 3
@@ -118,7 +123,7 @@ def _kb_chunks() -> List[tuple]:
 
 def _kb_stems(query: str) -> List[str]:
     words = [w.strip(".,!?;:«»\"'()") for w in query.lower().split()]
-    long_words = [w for w in words if len(w) >= KB_MIN_WORD_LEN]
+    long_words = [w for w in words if _is_searchable(w)]
     return list(dict.fromkeys(w[:KB_STEM_LEN] for w in (long_words or words) if w))
 
 
@@ -155,7 +160,7 @@ def kb_context(user_text: str, max_chars: int = KB_CONTEXT_MAX_CHARS) -> str:
     обращения к модели. Пустая строка, если ничего подходящего нет.
     """
     words = [w.strip(".,!?;:«»\"'()") for w in user_text.lower().split()]
-    query = " ".join(w for w in words if len(w) >= KB_MIN_WORD_LEN)
+    query = " ".join(w for w in words if _is_searchable(w))
     if not query:
         return ""
     found = search_knowledge_base(query, max_chars)
