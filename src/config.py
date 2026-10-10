@@ -101,8 +101,8 @@ class Settings(BaseSettings):
 
     # Распознавание речи (STT) через Polza, тот же POLZA_API_KEY. Тарификация по
     # секундам звука. Список — белый: страница теста выбирает только из него.
-    stt_model: str = "openai/whisper-large-v3-turbo"
-    stt_models: str = "openai/whisper-large-v3-turbo,openai/whisper-large-v3,ai-sage/gigaam-v3,openai/gpt-4o-mini-transcribe"
+    stt_model: str = "openai/gpt-4o-transcribe"
+    stt_models: str = "openai/gpt-4o-transcribe,openai/whisper-large-v3-turbo,openai/whisper-large-v3,ai-sage/gigaam-v3,openai/gpt-4o-mini-transcribe"
     stt_language: str = "ru"
     stt_max_bytes: int = 5_000_000
     stt_timeout_seconds: float = 30
