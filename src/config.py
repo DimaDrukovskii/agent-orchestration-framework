@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     hermes_agent_model: str = "hermes-agent"
     hermes_agent_timeout_seconds: int = 120
 
+    # Контроль расходов на LLM. Почти вся цена запроса — входные токены
+    # (системный промпт + схемы инструментов + история), поэтому:
+    #  - llm_max_tokens: потолок ответа (телефонная реплика короткая; он же
+    #    определяет «резерв» под запрос, который Polza сверяет с лимитом ключа);
+    #  - llm_max_history_messages: сколько последних сообщений шлём модели;
+    #  - llm_prompt_cache: для Claude на Polza помечаем системный промпт
+    #    cache_control — повторное чтение дешевле в 10 раз.
+    llm_max_tokens: int = 300
+    llm_closing_max_tokens: int = 200
+    llm_max_history_messages: int = 12
+    llm_prompt_cache: bool = True
+
     # Креативность ответов Hermes: 0 — сухо и предсказуемо, 1 — живее и
     # разнообразнее. Для звонка 0.6–0.8 даёт речь "не по шаблону", но без
     # выдумок. Модель задаётся POLZA_MODEL / ANTHROPIC_MODEL выше.

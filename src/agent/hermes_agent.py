@@ -23,6 +23,35 @@ MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агент
 CLOSING_PROMPT = "Коротко скажи абоненту, что происходит дальше (своими словами, не как бот)."
 
 
+def trim_history(messages: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    """
+    Оставить последние `limit` сообщений, не разрывая цепочку вызова инструмента:
+    срез всегда начинается с реплики абонента (role="user"), поэтому assistant
+    с tool_calls и его role="tool" ответы остаются вместе. Исходный список не меняется.
+    """
+    if limit <= 0 or len(messages) <= limit:
+        return list(messages)
+    start = len(messages) - limit
+    while start < len(messages) and messages[start].get("role") != "user":
+        start += 1
+    if start >= len(messages):  # в хвосте нет реплики абонента — не обрезаем вслепую
+        return list(messages)
+    return list(messages[start:])
+
+
+def log_usage(response: Any, model: str) -> None:
+    """Токены запроса в лог: по ним видно, куда уходят деньги (cached — дешёвые)."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = getattr(details, "cached_tokens", 0) or 0
+    logger.info(
+        f"LLM usage model={model} in={getattr(usage, 'prompt_tokens', 0)} "
+        f"cached={cached} out={getattr(usage, 'completion_tokens', 0)}"
+    )
+
+
 class HermesAgent:
     def __init__(self, provider: Optional[str] = None):
         self.provider = provider or settings.llm_provider
@@ -61,6 +90,24 @@ class HermesAgent:
             self.model = settings.anthropic_model
         else:
             raise ValueError(f"Неизвестный LLM_PROVIDER: {self.provider}")
+
+    def system_message(self) -> Dict[str, Any]:
+        """Системный промпт; для Claude на Polza помечается к кэшированию (read = 0.1x цены)."""
+        cacheable = (
+            settings.llm_prompt_cache
+            and self.provider == "polza"
+            and self.model.startswith("anthropic/")
+        )
+        if not cacheable:
+            return {"role": "system", "content": HERMES_SYSTEM_PROMPT}
+        return {
+            "role": "system",
+            "content": [{
+                "type": "text",
+                "text": HERMES_SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }],
+        }
 
     async def run(
         self,
@@ -165,7 +212,7 @@ class HermesAgent:
         TOOLS_SCHEMA_OPENAI (src/agent/tools.py), вызовы — message.tool_calls,
         результаты — отдельные сообщения с role="tool".
         """
-        working_messages = messages.copy()
+        working_messages = messages.copy()  # полная история: идёт в хранилище и транскрипт
         pending_transfer = None
 
         for iteration in range(MAX_TOOL_ITERATIONS):
@@ -173,15 +220,17 @@ class HermesAgent:
 
             request: Dict[str, Any] = {
                 "model": self.model,
-                "max_tokens": 600,
+                "max_tokens": settings.llm_max_tokens,
                 "temperature": settings.llm_temperature,
-                "messages": [{"role": "system", "content": HERMES_SYSTEM_PROMPT}] + working_messages,
+                "messages": [self.system_message()]
+                + trim_history(working_messages, settings.llm_max_history_messages),
             }
             # Hermes Agent ведёт свой цикл со своими инструментами и наши tools
             # не вызывает — схему ему не отправляем (инструменты МТС: отдельный шаг).
             if self.provider != "hermes_agent":
                 request["tools"] = TOOLS_SCHEMA_OPENAI
             response = await self.client.chat.completions.create(**request)
+            log_usage(response, self.model)
 
             choice = response.choices[0]
             msg = choice.message
@@ -220,11 +269,11 @@ class HermesAgent:
 
         closing = await self.client.chat.completions.create(
             model=self.model,
-            max_tokens=300,
+            max_tokens=settings.llm_closing_max_tokens,
             temperature=settings.llm_temperature,
             messages=(
-                [{"role": "system", "content": HERMES_SYSTEM_PROMPT}]
-                + working_messages
+                [self.system_message()]
+                + trim_history(working_messages, settings.llm_max_history_messages)
                 + [{"role": "user", "content": CLOSING_PROMPT}]
             ),
         )
