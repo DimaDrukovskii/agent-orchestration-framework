@@ -210,3 +210,13 @@ const response = await fetch('/api/dialog', {
 const data = await response.json();
 console.log(data.agent_response);
 ```
+
+
+## Поле `chat` в ответе `POST /api/hermes/dialog` (голос → чат)
+
+Кроме `agent_response` и `transfer` ответ содержит `chat` — список текстов, которые агент отправил абоненту
+в чат (цены, сравнение тарифов, шаги инструкции, ссылки). Голосом агент при этом говорит только суть.
+Пустой список — в чат ничего не отправлялось. Если задан `TELEGRAM_CHAT_ID`, тексты дополнительно уходят в Telegram.
+
+Ошибки провайдера модели: `503` с `error.code` = `model_not_allowed` (модель не разрешена на ключе) или
+`insufficient_balance` (закончился лимит), оба с `retryable: false`.

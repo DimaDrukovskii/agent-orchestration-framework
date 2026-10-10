@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Literal, Optional, Dict, Any
 from anthropic import APITimeoutError
-from openai import APITimeoutError as OpenAITimeoutError
+from openai import APIStatusError, APITimeoutError as OpenAITimeoutError
 from redis.exceptions import RedisError
 from src.agent.hermes_agent import HermesAgent
 from src.api.auth import verify_api_key
@@ -44,10 +44,10 @@ class HermesDialogResponse(BaseModel):
     persisted: bool = True
 
 
-def _unavailable(code: str, message: str) -> HTTPException:
+def _unavailable(code: str, message: str, retryable: bool = True) -> HTTPException:
     return HTTPException(
         status_code=503,
-        detail={"error": {"code": code, "message": message, "retryable": True}},
+        detail={"error": {"code": code, "message": message, "retryable": retryable}},
     )
 
 
@@ -68,17 +68,13 @@ def _to_plain(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     plain: List[Dict[str, Any]] = []
     for msg in messages:
-        content = msg["content"]
+        # остальные поля (tool_calls, tool_call_id) нужны провайдеру на следующей реплике
+        item = {key: value for key, value in msg.items() if key != "content"}
+        content = msg.get("content")
         if isinstance(content, list):
-            plain_content = []
-            for block in content:
-                if hasattr(block, "model_dump"):
-                    plain_content.append(block.model_dump())
-                else:
-                    plain_content.append(block)
-            plain.append({"role": msg["role"], "content": plain_content})
-        else:
-            plain.append({"role": msg["role"], "content": content})
+            content = [block.model_dump() if hasattr(block, "model_dump") else block for block in content]
+        item["content"] = content
+        plain.append(item)
     return plain
 
 
@@ -214,6 +210,13 @@ async def hermes_dialog(request: HermesDialogRequest):
     except (RedisError, sqlite3.Error) as e:
         logger.error(f"[{request.session_id}] Session store error: {str(e)}")
         raise _unavailable("session_store_unavailable", "Хранилище сессий недоступно")
+    except APIStatusError as e:
+        logger.error(f"[{request.session_id}] LLM provider error {e.status_code}: {str(e)}")
+        if e.status_code == 403:
+            raise _unavailable("model_not_allowed", "Модель агента не разрешена на ключе провайдера", retryable=False)
+        if e.status_code == 402:
+            raise _unavailable("insufficient_balance", "У ключа провайдера закончился лимит", retryable=False)
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Hermes dialog error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

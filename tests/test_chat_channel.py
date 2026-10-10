@@ -95,3 +95,45 @@ def test_dialog_response_includes_chat_and_delivers_it(monkeypatch):
     assert response.status_code == 200
     assert response.json()["chat"] == ["подробности"]
     assert delivered == ["подробности"]
+
+
+def _status_error(status):
+    import httpx
+    from openai import APIStatusError
+
+    response = httpx.Response(status, request=httpx.Request("POST", "http://polza.test"))
+    return APIStatusError("boom", response=response, body=None)
+
+
+def test_provider_403_and_402_map_to_non_retryable_503(monkeypatch):
+    async def fake_get(session_id):
+        return []
+
+    monkeypatch.setattr(hermes_routes, "_get_session", fake_get)
+    for status, code in ((403, "model_not_allowed"), (402, "insufficient_balance")):
+        class FailingAgent:
+            async def run(self, messages, caller_phone, _status=status):
+                raise _status_error(_status)
+
+        monkeypatch.setattr(hermes_routes, "agent_for", lambda profile, _a=FailingAgent(): _a)
+        response = client.post(
+            "/api/hermes/dialog",
+            json={"session_id": "s-err", "caller_phone": "+79990000000", "user_message": "привет"},
+            headers=HEADERS,
+        )
+        error = response.json()["detail"]["error"]
+        assert response.status_code == 503 and error["code"] == code and error["retryable"] is False
+
+
+def test_session_history_keeps_tool_call_fields():
+    history = [
+        {"role": "user", "content": "пришлите цены"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "send_to_chat", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "{'action': 'chat'}"},
+        {"role": "assistant", "content": "Отправила."},
+    ]
+    plain = hermes_routes._to_plain(history)
+    assert plain[1]["tool_calls"][0]["id"] == "c1"
+    assert plain[2]["tool_call_id"] == "c1"
+    assert plain[1]["content"] is None
+    assert json.dumps(plain)  # сериализуется для Redis

@@ -5,7 +5,7 @@
 
 import os
 import glob
-from typing import Dict, Any
+from typing import List, Dict, Any
 from src.utils import logger, mask_phone
 
 KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "../../data/knowledge")
@@ -81,39 +81,72 @@ TOOLS_SCHEMA = [
 
 # ---- Реализация инструментов ----
 
-def search_knowledge_base(query: str) -> str:
-    """Простой поиск по markdown-файлам базы знаний (keyword match)."""
+KB_CONTEXT_MAX_CHARS = 1500
+KB_TOOL_MAX_CHARS = 3000
+KB_MIN_WORD_LEN = 4  # короткие слова («не», «у», «как») совпадают с чем угодно
+KB_STEM_LEN = 5  # «тарифы» / «тарифа» / «тарифов» находят один и тот же кусок
+KB_CHUNK_MAX_CHARS = 900
+KB_MAX_CHUNKS = 3
+
+
+def _kb_chunks() -> List[tuple]:
+    """Файлы базы знаний, нарезанные на куски по заголовкам и абзацам: (файл, текст)."""
+    chunks = []
+    for filepath in sorted(glob.glob(os.path.join(KNOWLEDGE_DIR, "*.md"))):
+        name = os.path.basename(filepath)
+        if name.lower() == "readme.md":
+            continue
+        with open(filepath, "r", encoding="utf-8") as f:
+            sections, current = [], []
+            for line in f.read().splitlines():
+                if line.startswith("#") and current:
+                    sections.append("\n".join(current))
+                    current = []
+                current.append(line)
+            sections.append("\n".join(current))
+        for section in sections:
+            piece = ""
+            for paragraph in section.split("\n\n"):
+                if piece and len(piece) + len(paragraph) > KB_CHUNK_MAX_CHARS:
+                    chunks.append((name, piece.strip()))
+                    piece = ""
+                piece += paragraph + "\n\n"
+            if piece.strip():
+                chunks.append((name, piece.strip()))
+    return chunks
+
+
+def _kb_stems(query: str) -> List[str]:
+    words = [w.strip(".,!?;:«»\"'()") for w in query.lower().split()]
+    long_words = [w for w in words if len(w) >= KB_MIN_WORD_LEN]
+    return list(dict.fromkeys(w[:KB_STEM_LEN] for w in (long_words or words) if w))
+
+
+def search_knowledge_base(query: str, max_chars: int = KB_TOOL_MAX_CHARS) -> str:
+    """
+    Поиск по markdown-файлам базы знаний: файлы режутся на куски, берутся лучшие куски
+    из любых файлов (не один файл целиком), совпадение по основе слова.
+    """
     try:
-        results = []
-        files = [
-            f for f in glob.glob(os.path.join(KNOWLEDGE_DIR, "*.md"))
-            if os.path.basename(f).lower() != "readme.md"
-        ]
-        query_words = query.lower().split()
-
-        for filepath in files:
-            with open(filepath, "r", encoding="utf-8") as f:
-                content = f.read()
-            score = sum(1 for word in query_words if word in content.lower())
+        stems = _kb_stems(query)
+        scored = []
+        for name, chunk in _kb_chunks():
+            lowered = chunk.lower()
+            score = sum(min(lowered.count(stem), 3) for stem in stems)
             if score > 0:
-                results.append((score, os.path.basename(filepath), content))
-
-        results.sort(key=lambda x: x[0], reverse=True)
-
-        if not results:
+                scored.append((score, name, chunk))
+        if not scored:
             return "Ничего не найдено в базе знаний по этому запросу."
 
-        top = results[0]
-        logger.info(f"Knowledge base: found match in {top[1]} (score={top[0]})")
-        return f"Источник: {top[1]}\n\n{top[2]}"
+        scored.sort(key=lambda item: item[0], reverse=True)
+        top = scored[:KB_MAX_CHUNKS]
+        logger.info(f"Knowledge base: {[(n, sc) for sc, n, _ in top]}")
+        found = "\n\n---\n\n".join(f"Источник: {name}\n{chunk}" for _, name, chunk in top)
+        return found if len(found) <= max_chars else found[:max_chars] + "[…]"
 
     except Exception as e:
         logger.error(f"search_knowledge_base error: {str(e)}")
         return "Ошибка доступа к базе знаний."
-
-
-KB_CONTEXT_MAX_CHARS = 1500
-KB_MIN_WORD_LEN = 4  # короткие слова («не», «у», «как») совпадают с чем угодно
 
 
 def kb_context(user_text: str, max_chars: int = KB_CONTEXT_MAX_CHARS) -> str:
@@ -125,10 +158,10 @@ def kb_context(user_text: str, max_chars: int = KB_CONTEXT_MAX_CHARS) -> str:
     query = " ".join(w for w in words if len(w) >= KB_MIN_WORD_LEN)
     if not query:
         return ""
-    found = search_knowledge_base(query)
+    found = search_knowledge_base(query, max_chars)
     if found.startswith(("Ничего не найдено", "Ошибка доступа")):
         return ""
-    return found if len(found) <= max_chars else found[:max_chars] + "[…]"
+    return found
 
 
 def check_account_status(phone: str) -> Dict[str, Any]:

@@ -109,3 +109,18 @@ def test_turn_cap_stops_llm_calls(monkeypatch):
     assert captured == {}  # к модели не обращались
     assert "оператор" in result["response"].lower()
     assert result["messages"][-1]["role"] == "assistant"
+
+
+def test_kb_finds_section_deep_in_a_long_file(tmp_path, monkeypatch):
+    filler = "\n\n".join(f"Абзац про погоду номер {i}, ничего полезного." for i in range(80))
+    _kb(tmp_path, monkeypatch, text="# Общее\n" + filler + "\n\n# Роуминг\nРоуминг в Казахстане стоит 300 рублей в сутки.")
+    snippet = tools.kb_context("Сколько стоит роуминг в Казахстане?")
+    assert "300 рублей в сутки" in snippet
+
+
+def test_kb_matches_word_forms_and_ignores_unrelated_files(tmp_path, monkeypatch):
+    (tmp_path / "escalation.md").write_text("# Перевод\nПри просьбе позвать человека переводим на оператора в чат.", encoding="utf-8")
+    (tmp_path / "pricing.md").write_text("# Тарифы\nТариф RED стоит 750 рублей в месяц.", encoding="utf-8")
+    monkeypatch.setattr(tools, "KNOWLEDGE_DIR", str(tmp_path))
+    snippet = tools.kb_context("Расскажите про тарифы RED")
+    assert "750 рублей" in snippet

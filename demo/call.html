@@ -691,6 +691,11 @@
       const LEVEL_SMOOTHING = 0.35;
       const LEVEL_GAIN = 4;
       const GREETING = "Здравствуйте, менеджер Алина от компании МТС, слушаю.";
+      // ошибки ключа повторять бессмысленно: сразу объясняем, а не «связь пропала» три раза
+      const FATAL_AGENT_ERRORS = {
+        model_not_allowed: "Модель агента не разрешена на ключе Polza (403). Разрешите её в настройках ключа и позвоните снова.",
+        insufficient_balance: "У ключа Polza закончился лимит (402). Поднимите лимит или дождитесь сброса и позвоните снова.",
+      };
       const FALLBACK_REPLY = "Извините, связь на секунду пропала. Повторите, пожалуйста.";
 
       const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1450,7 +1455,10 @@
             signal: controller.signal,
           });
           if (response.status === 401) return { fatal: "Неверный API-ключ (X-API-Key)." };
-          if (!response.ok) return { reply: FALLBACK_REPLY, failed: true };
+          if (!response.ok) {
+            const detail = ((await response.json().catch(() => ({}))).detail || {}).error || {};
+            return { reply: FALLBACK_REPLY, failed: true, fatal: FATAL_AGENT_ERRORS[detail.code] || null };
+          }
           const data = await response.json();
           return { reply: data.agent_response || FALLBACK_REPLY, transfer: data.transfer || null, chat: data.chat || [] };
         } catch (e) {
