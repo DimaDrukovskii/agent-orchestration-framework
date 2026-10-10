@@ -56,7 +56,9 @@ def test_unknown_provider_is_rejected():
     raise AssertionError("ожидали ValueError")
 
 
-def test_agent_for_returns_default_and_cached_local_agent():
+def test_agent_for_returns_default_and_cached_local_agent(monkeypatch):
+    monkeypatch.setattr(settings, "local_base_url", "http://localhost:11434/v1")
+    monkeypatch.delitem(hermes_routes._agents, "local", raising=False)
     assert hermes_routes.agent_for(None) is hermes_routes.hermes
     assert hermes_routes.agent_for("default") is hermes_routes.hermes
     local = hermes_routes.agent_for("local")
@@ -102,3 +104,10 @@ def test_llm_status_reports_local_availability(monkeypatch):
 
     monkeypatch.setattr(llm_routes, "probe_local", down)
     assert client.get("/api/llm/status", headers=HEADERS).json()["local"]["available"] is False
+
+
+def test_probe_local_is_false_for_placeholder_url(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr(settings, "local_base_url", "http://<IP-устройства>:<порт>/v1")
+    assert asyncio.run(llm_routes.probe_local()) is False

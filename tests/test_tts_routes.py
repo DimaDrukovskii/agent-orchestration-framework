@@ -22,13 +22,15 @@ def test_tts_requires_api_key():
     assert client.post("/api/tts", json={"text": "привет"}).status_code == 401
 
 
-def test_tts_status_reports_disabled_by_default():
+def test_tts_status_reports_disabled_when_provider_none(monkeypatch):
+    monkeypatch.setattr(tts_routes.tts_service, "provider", "none")
     response = client.get("/api/tts/status", headers=HEADERS)
     assert response.status_code == 200
     assert response.json()["enabled"] is False
 
 
-def test_tts_returns_503_when_not_configured():
+def test_tts_returns_503_when_not_configured(monkeypatch):
+    monkeypatch.setattr(tts_routes.tts_service, "provider", "none")
     response = client.post("/api/tts", json={"text": "привет"}, headers=HEADERS)
     assert response.status_code == 503
     assert response.json()["detail"]["error"]["code"] == "tts_not_configured"

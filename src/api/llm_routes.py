@@ -24,7 +24,8 @@ async def probe_local() -> bool:
         async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
             response = await client.get(url)
             return response.status_code == 200
-    except httpx.HTTPError:
+    except Exception:
+        # не только сеть: шаблонный или кривой адрес в .env тоже означает «недоступно»
         return False
 
 
