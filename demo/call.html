@@ -421,6 +421,25 @@
         color: var(--color-card);
       }
 
+      .chat-link {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border: 1px solid var(--color-ink);
+        border-radius: 999px;
+        color: var(--color-ink);
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      .chat-link:hover {
+        background: var(--color-ink);
+        color: var(--color-card);
+      }
+
       .chat-msg.pending {
         opacity: 0.55;
       }
@@ -932,6 +951,21 @@
         chatEl.appendChild(bubble);
         chatEl.scrollTop = chatEl.scrollHeight;
         return bubble;
+      }
+
+      // агент показывает раздел сайта: кнопка-ссылка в ленте (только https, откроется в новой вкладке)
+      function addLinks(links) {
+        for (const item of links) {
+          if (!item || typeof item.url !== "string" || !item.url.startsWith("https://")) continue;
+          const link = document.createElement("a");
+          link.className = "chat-link";
+          link.href = item.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = (item.title || "Открыть") + " ↗";
+          chatEl.appendChild(link);
+        }
+        chatEl.scrollTop = chatEl.scrollHeight;
       }
 
       function showNotice(html) {
@@ -1597,7 +1631,7 @@
             return { reply: FALLBACK_REPLY, failed: true, fatal: FATAL_AGENT_ERRORS[detail.code] || null };
           }
           const data = await response.json();
-          return { reply: data.agent_response || FALLBACK_REPLY, transfer: data.transfer || null, chat: data.chat || [] };
+          return { reply: data.agent_response || FALLBACK_REPLY, transfer: data.transfer || null, chat: data.chat || [], links: data.links || [] };
         } catch (e) {
           return { reply: FALLBACK_REPLY, failed: true };
         } finally {
@@ -1627,6 +1661,7 @@
 
         addMessage("agent", result.reply);
         (result.chat || []).forEach((extra) => addMessage("agent", extra));
+        addLinks(result.links || []);
         showCaption("Алина", result.reply);
         setPhase("speaking");
         await speak(activeCall, result.reply, { interruptible: !result.transfer });
@@ -1802,6 +1837,7 @@
         }
         addMessage("agent", result.reply);
         (result.chat || []).forEach((extra) => addMessage("agent", extra));
+        addLinks(result.links || []);
       }
 
       composer.addEventListener("submit", (event) => {

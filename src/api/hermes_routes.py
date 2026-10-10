@@ -41,6 +41,7 @@ class HermesDialogResponse(BaseModel):
     agent_response: str
     transfer: Optional[Dict[str, Any]] = None
     chat: List[str] = []  # сообщения, которые агент отправил абоненту в чат (голос -> чат)
+    links: List[Dict[str, str]] = []  # разделы сайта, которые агент показал кнопками: [{title, url}]
     persisted: bool = True
 
 
@@ -201,6 +202,7 @@ async def hermes_dialog(request: HermesDialogRequest):
             agent_response=result["response"],
             transfer=result["pending_transfer"],
             chat=chat,
+            links=result.get("links", []),
             persisted=persisted
         )
 

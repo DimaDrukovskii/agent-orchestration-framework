@@ -13,8 +13,8 @@ settings.llm_provider:
 import json
 from typing import List, Dict, Any, AsyncGenerator, Optional
 from src.config import settings
-from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context
-from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_SYSTEM_PROMPT
+from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context, load_site_map, open_section_tool
+from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_LINKS_RULE, HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
 
 # провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
@@ -123,7 +123,8 @@ class HermesAgent:
 
     def system_message(self) -> Dict[str, Any]:
         """Системный промпт; для Claude на Polza помечается к кэшированию (read = 0.1x цены)."""
-        prompt = HERMES_SYSTEM_PROMPT + (HERMES_CHAT_RULE if settings.chat_enabled else "")
+        prompt = (HERMES_SYSTEM_PROMPT + (HERMES_CHAT_RULE if settings.chat_enabled else "")
+                  + (HERMES_LINKS_RULE if load_site_map() else ""))
         cacheable = (
             settings.llm_prompt_cache
             and self.provider == "polza"
@@ -246,6 +247,7 @@ class HermesAgent:
         working_messages = messages.copy()  # полная история: идёт в хранилище и транскрипт
         pending_transfer = None
         chat_messages: List[str] = []  # что агент отправил абоненту в чат за эту реплику
+        links: List[Dict[str, str]] = []  # разделы сайта, которые агент показал кнопками
 
         if count_user_turns(working_messages) > settings.llm_max_turns:
             logger.warning(f"Turn cap reached ({settings.llm_max_turns}), phone={mask_phone(caller_phone)}")
@@ -261,6 +263,7 @@ class HermesAgent:
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
                  and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
+        tools += open_section_tool()
 
         for iteration in range(MAX_TOOL_ITERATIONS):
             logger.info(f"Hermes iteration {iteration + 1}, phone={mask_phone(caller_phone)}")
@@ -291,6 +294,7 @@ class HermesAgent:
                     "messages": working_messages,
                     "pending_transfer": pending_transfer,
                     "chat": chat_messages,
+                    "links": links,
                 }
 
             working_messages.append({
@@ -308,6 +312,8 @@ class HermesAgent:
                     pending_transfer = result
                 elif tool_call.function.name == "send_to_chat" and result.get("text"):
                     chat_messages.append(result["text"])
+                elif tool_call.function.name == "show_section" and result.get("url"):
+                    links.append({"title": result["title"], "url": result["url"]})
 
                 working_messages.append({
                     "role": "tool",
@@ -337,6 +343,7 @@ class HermesAgent:
             "messages": working_messages,
             "pending_transfer": pending_transfer,
             "chat": chat_messages,
+            "links": links,
         }
 
     async def run_streaming(

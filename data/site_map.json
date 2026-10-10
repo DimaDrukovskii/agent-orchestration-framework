@@ -1,0 +1,44 @@
+[
+  {
+    "id": "tariffs",
+    "title": "Тарифы МТС",
+    "url": "https://www.mts.ru/personal/mobilnaya-svyaz/tarifi/vse-tarifi/mobile",
+    "when": "абонент выбирает или сравнивает тарифы, хочет увидеть все тарифы"
+  },
+  {
+    "id": "roaming",
+    "title": "Роуминг и межгород",
+    "url": "https://www.mts.ru/personal/mobilnaya-svyaz/rouming-i-mezhgorod",
+    "when": "поездки, роуминг, звонки за границу и межгород"
+  },
+  {
+    "id": "number_transfer",
+    "title": "Перенести номер в МТС",
+    "url": "https://www.mts.ru/personal/pereyti-v-mts",
+    "when": "перенос номера от другого оператора, переход в МТС"
+  },
+  {
+    "id": "esim",
+    "title": "Оформить eSIM",
+    "url": "https://www.mts.ru/personal/esim",
+    "when": "eSIM, электронная сим-карта"
+  },
+  {
+    "id": "sim_order",
+    "title": "Заменить SIM-карту",
+    "url": "https://www.mts.ru/personal/sim-order",
+    "when": "замена или заказ SIM-карты"
+  },
+  {
+    "id": "top_up",
+    "title": "Пополнить баланс",
+    "url": "https://pay.mts.ru/pages/refill",
+    "when": "пополнение баланса, оплата связи"
+  },
+  {
+    "id": "support",
+    "title": "Поддержка МТС",
+    "url": "https://support.mts.ru/",
+    "when": "инструкции и помощь, вопрос про настройки или проблему, который лучше показать на странице"
+  }
+]

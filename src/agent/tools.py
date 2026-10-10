@@ -3,6 +3,7 @@
 Каждый tool — функция, которую Claude может вызвать сам в процессе рассуждения.
 """
 
+import json
 import os
 import glob
 from typing import List, Dict, Any
@@ -202,8 +203,49 @@ def send_to_chat(text: str) -> Dict[str, Any]:
     return {"action": "chat", "text": text.strip()[:CHAT_MESSAGE_MAX_CHARS], "status": "отправлено в чат"}
 
 
+SITE_MAP_PATH = os.path.join(os.path.dirname(__file__), "../../data/site_map.json")
+
+
+def load_site_map() -> List[Dict[str, str]]:
+    """Разделы сайта компании: [{id, title, url, when}]. Нет файла или он пуст — инструмента нет."""
+    try:
+        with open(SITE_MAP_PATH, "r", encoding="utf-8") as f:
+            sections = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [x for x in sections if x.get("id") and x.get("url", "").startswith("https://")]
+
+
+def open_section_tool() -> List[Dict[str, Any]]:
+    """Схема инструмента show_section (формат OpenAI) с разделами из site_map.json; [] если карты нет."""
+    sections = load_site_map()
+    if not sections:
+        return []
+    listing = "; ".join(f"{x['id']} (когда: {x.get('when', x['title'])})" for x in sections)
+    return [{
+        "type": "function",
+        "function": {
+            "name": "show_section",
+            "description": "Показать абоненту нужный раздел сайта кнопкой-ссылкой в окне. Разделы: " + listing,
+            "parameters": {
+                "type": "object",
+                "properties": {"section": {"type": "string", "enum": [x["id"] for x in sections]}},
+                "required": ["section"],
+            },
+        },
+    }]
+
+
+def show_section(section: str) -> Dict[str, Any]:
+    for x in load_site_map():
+        if x["id"] == section:
+            return {"action": "link", "title": x.get("title", section), "url": x["url"]}
+    return {"error": "неизвестный раздел"}
+
+
 # Диспетчер вызовов
 TOOL_HANDLERS = {
+    "show_section": lambda inp: show_section(inp["section"]),
     "send_to_chat": lambda inp: send_to_chat(inp["text"]),
     "search_knowledge_base": lambda inp: search_knowledge_base(inp["query"]),
     "check_account_status": lambda inp: check_account_status(inp["phone"]),
