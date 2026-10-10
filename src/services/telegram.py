@@ -22,8 +22,15 @@ async def send_message(chat_id: str, text: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(url, json=payload)
-            response.raise_for_status()
-            return True
+            if response.is_success:
+                return True
+            # в тексте исключения httpx есть URL с токеном бота — его в логи не пишем
+            try:
+                reason = response.json().get("description", "")
+            except ValueError:
+                reason = ""
+            logger.error(f"Telegram send_message: HTTP {response.status_code} {reason}".strip())
+            return False
     except Exception as e:
-        logger.error(f"Telegram send_message error: {str(e)}")
+        logger.error(f"Telegram send_message error: {type(e).__name__}")
         return False

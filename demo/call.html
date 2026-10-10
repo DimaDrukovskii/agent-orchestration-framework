@@ -638,6 +638,13 @@
       const MAX_AGENT_FAILURES = 3;
       const MAX_CHUNK_CHARS = 180; // короткие куски: быстрее первый звук и мягче расход кредитов
       const BROWSER_SPEECH_RATE = 1.05;
+      // перебивание: пока Алина говорит, слушаем микрофон; ?barge=0 в адресе — выключить
+      const BARGE_IN_ENABLED = new URLSearchParams(location.search).get("barge") !== "0";
+      const BARGE_MIN_CHARS = 10; // короче или одно слово — считаем шумом или эхом
+      const BARGE_MIN_WORDS = 2;
+      const BARGE_ECHO_RATIO = 0.4; // столько слов совпало с речью Алины — это эхо динамиков, а не абонент
+      const BARGE_FINISH_TIMEOUT_MS = 7000; // после перебивания дослушиваем не дольше этого
+      const BARGE_RESTART_DELAY_MS = 200;
       const LEVEL_SMOOTHING = 0.35;
       const LEVEL_GAIN = 4;
       const GREETING =
@@ -966,17 +973,126 @@
         });
       }
 
-      async function speak(activeCall, text) {
+      function stopPlayback(activeCall) {
+        if (activeCall.source) {
+          try {
+            activeCall.source.stop();
+          } catch (e) {}
+        }
+        if (synth) synth.cancel();
+      }
+
+      // слова, услышанные микрофоном, почти целиком совпадают с речью Алины — это её эхо
+      function isEcho(heard, spoken) {
+        const words = (s) => s.toLowerCase().replace(/[^а-яёa-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+        const heardWords = words(heard);
+        if (!heardWords.length) return true;
+        const spokenSet = new Set(words(spoken));
+        const hits = heardWords.filter((w) => spokenSet.has(w)).length;
+        return hits / heardWords.length >= BARGE_ECHO_RATIO;
+      }
+
+      // Слушаем абонента, пока говорит Алина. Заговорил — Алина замолкает, а это же
+      // распознавание дослушивает фразу и передаёт её агенту (см. onend).
+      function startBargeIn(activeCall, spokenText) {
+        if (!BARGE_IN_ENABLED || activeCall.muted || !isActive(activeCall)) return;
+        teardownRecognition();
+        activeCall.bargeActive = true;
+
+        const rec = new SpeechRecognitionImpl();
+        rec.lang = "ru-RU";
+        rec.interimResults = true;
+        rec.continuous = false;
+        rec.maxAlternatives = 1;
+        recognition = rec;
+
+        let triggered = false;
+        let finalText = "";
+
+        rec.onresult = (event) => {
+          let heard = "";
+          finalText = "";
+          for (let i = 0; i < event.results.length; i++) {
+            heard += event.results[i][0].transcript;
+            if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
+          }
+          if (!triggered) {
+            const wordCount = heard.trim().split(/\s+/).filter(Boolean).length;
+            if (heard.trim().length < BARGE_MIN_CHARS || wordCount < BARGE_MIN_WORDS || isEcho(heard, spokenText)) return;
+            triggered = true;
+            activeCall.interrupted = true;
+            stopPlayback(activeCall);
+            setPhase("listening");
+            // Chrome иногда не закрывает распознавание сам — без этого звонок «замирает»
+            setTimeout(() => {
+              if (rec === recognition) {
+                try {
+                  rec.stop();
+                } catch (e) {}
+              }
+            }, BARGE_FINISH_TIMEOUT_MS);
+          }
+          showCaption("Вы", heard.trim());
+        };
+
+        rec.onerror = () => {};
+
+        rec.onend = () => {
+          if (rec !== recognition) return; // распознавание уже заменено или снято
+          recognition = null;
+          if (!isActive(activeCall)) return;
+
+          if (triggered) {
+            activeCall.bargeActive = false;
+            const text = finalText.trim();
+            if (text) {
+              activeCall.failures = 0;
+              handleUserTurn(activeCall, text);
+            } else {
+              activeCall.interrupted = false; // не разобрали, что сказал: слушаем заново
+              activeCall.busy = false;
+              listen(activeCall);
+            }
+            return;
+          }
+          // Chrome закрывает распознавание после паузы: пока Алина говорит, запускаем снова
+          if (activeCall.bargeActive && !activeCall.interrupted) {
+            setTimeout(() => {
+              if (activeCall.bargeActive && !activeCall.interrupted && !recognition && isActive(activeCall)) {
+                startBargeIn(activeCall, spokenText);
+              }
+            }, BARGE_RESTART_DELAY_MS);
+          }
+        };
+
+        try {
+          rec.start();
+        } catch (e) {
+          activeCall.bargeActive = false;
+        }
+      }
+
+      async function speak(activeCall, text, { interruptible = true } = {}) {
         const chunks = splitForSpeech(text);
-        // следующий кусок заказываем заранее, пока играет текущий — без пауз между фразами
-        let pending = activeCall.voice === "server" ? fetchSpeech(activeCall, chunks[0]) : null;
-        for (let i = 0; i < chunks.length; i++) {
-          if (!isActive(activeCall)) return;
-          const buffer = pending ? await pending : null;
-          pending = activeCall.voice === "server" && i + 1 < chunks.length ? fetchSpeech(activeCall, chunks[i + 1]) : null;
-          if (!isActive(activeCall)) return;
-          if (buffer) await playBuffer(activeCall, buffer);
-          else await speakWithBrowser(chunks[i]);
+        activeCall.interrupted = false;
+        if (interruptible) startBargeIn(activeCall, text);
+        try {
+          // следующий кусок заказываем заранее, пока играет текущий — без пауз между фразами
+          let pending = activeCall.voice === "server" ? fetchSpeech(activeCall, chunks[0]) : null;
+          for (let i = 0; i < chunks.length; i++) {
+            if (!isActive(activeCall) || activeCall.interrupted) return;
+            const buffer = pending ? await pending : null;
+            pending = activeCall.voice === "server" && i + 1 < chunks.length ? fetchSpeech(activeCall, chunks[i + 1]) : null;
+            if (!isActive(activeCall) || activeCall.interrupted) return;
+            if (buffer) await playBuffer(activeCall, buffer);
+            else await speakWithBrowser(chunks[i]);
+          }
+        } finally {
+          // договорила сама — барж-распознавание больше не нужно; перебили — оно дослушивает абонента
+          if (!activeCall.interrupted) {
+            activeCall.bargeActive = false;
+            teardownRecognition();
+          }
         }
       }
 
@@ -1122,8 +1238,12 @@
 
         showCaption("Алина", result.reply);
         setPhase("speaking");
-        await speak(activeCall, result.reply);
+        await speak(activeCall, result.reply, { interruptible: !result.transfer });
         if (!isActive(activeCall)) return;
+        if (activeCall.interrupted) {
+          activeCall.interrupted = false; // абонент перебил: его фразу уже дослушивает распознавание
+          return;
+        }
 
         if (result.transfer) {
           const dept = result.transfer.department || "профильного специалиста";
@@ -1184,6 +1304,10 @@
         setPhase("speaking");
         await speak(activeCall, GREETING);
         if (!isActive(activeCall)) return;
+        if (activeCall.interrupted) {
+          activeCall.interrupted = false; // перебили приветствие
+          return;
+        }
 
         activeCall.busy = false;
         await sleep(LISTEN_RESUME_DELAY_MS);
