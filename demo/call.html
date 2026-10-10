@@ -648,6 +648,21 @@
       // Chrome оценивает уверенность распознавания (0..1); ниже порога модель переспросит, как живой оператор
       const CONFIDENCE_MIN = 0.75;
       const UNCERTAIN_MARK = "[неуверенно распознано] ";
+      // серверное распознавание (/api/stt, gpt-4o-transcribe): запись с шумоподавлением и
+      // «воротами» по громкости; конец фразы — по паузе. ?stt=browser — вернуть браузерное
+      const STT_URL = "/api/stt";
+      const STT_STATUS_URL = "/api/stt/status";
+      const STT_FORCE_BROWSER = new URLSearchParams(location.search).get("stt") === "browser";
+      const VAD_CALIBRATE_MS = 500; // фон меряем в начале звонка, порог = фон * VAD_FACTOR
+      const VAD_MIN_LEVEL = 0.012;
+      const VAD_FACTOR = 2.5;
+      const VAD_HOLD_MS = 350; // ворота закрываются не сразу, чтобы не резать концы слов
+      const VAD_POLL_MS = 30;
+      const VAD_END_SILENCE_MS = 900; // столько тишины после речи = фраза закончена
+      const VAD_MIN_SPEECH_MS = 300; // короче — кашель или щелчок, не отправляем
+      const VAD_MAX_UTTERANCE_MS = 20000;
+      const VAD_IDLE_RESTART_MS = 15000; // долго молчат — перезапускаем запись, чтобы она не росла
+      const STT_MIN_CHARS = 2;
       const LEVEL_SMOOTHING = 0.35;
       const LEVEL_GAIN = 4;
       const GREETING = "Здравствуйте, менеджер Алина от компании МТС, слушаю.";
@@ -1106,8 +1121,176 @@
         }
       }
 
+      // --- серверное распознавание ----------------------------------------
+      let serverListener = null;
+
+      async function checkServerStt() {
+        if (STT_FORCE_BROWSER) return false;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+        try {
+          const response = await fetch(STT_STATUS_URL, { headers: apiHeaders(), signal: controller.signal });
+          return response.ok && (await response.json()).enabled === true;
+        } catch (e) {
+          return false;
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      // микрофон открываем один раз на звонок: фильтр низких частот + ворота по громкости
+      async function ensureMic(activeCall) {
+        if (activeCall.mic) return activeCall.mic;
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true, channelCount: 1 },
+        });
+        if (!isActive(activeCall)) {
+          stream.getTracks().forEach((t) => t.stop());
+          return null;
+        }
+        const ctx = activeCall.audio;
+        const source = ctx.createMediaStreamSource(stream);
+        const highpass = ctx.createBiquadFilter();
+        highpass.type = "highpass";
+        highpass.frequency.value = 120;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        const out = ctx.createMediaStreamDestination();
+        source.connect(highpass);
+        highpass.connect(analyser);
+        highpass.connect(gain);
+        gain.connect(out);
+
+        const mic = { stream: out.stream, lastLoud: 0, destroy: null };
+        const buf = new Float32Array(analyser.fftSize);
+        const t0 = performance.now();
+        let ambient = 0;
+        let threshold = VAD_MIN_LEVEL;
+        const timerId = setInterval(() => {
+          analyser.getFloatTimeDomainData(buf);
+          let sum = 0;
+          for (const v of buf) sum += v * v;
+          const rms = Math.sqrt(sum / buf.length);
+          const now = performance.now();
+          const calibrating = now - t0 < VAD_CALIBRATE_MS;
+          if (calibrating) {
+            ambient = Math.max(ambient, rms);
+            threshold = Math.max(VAD_MIN_LEVEL, ambient * VAD_FACTOR);
+          } else if (rms > threshold) {
+            mic.lastLoud = now;
+          }
+          const open = !calibrating && now - mic.lastLoud < VAD_HOLD_MS;
+          gain.gain.setTargetAtTime(open ? 1 : 0, ctx.currentTime, 0.02);
+        }, VAD_POLL_MS);
+        mic.destroy = () => {
+          clearInterval(timerId);
+          stream.getTracks().forEach((t) => t.stop());
+        };
+        activeCall.mic = mic;
+        return mic;
+      }
+
+      async function transcribe(activeCall, blob) {
+        const response = await fetch(STT_URL, {
+          method: "POST",
+          headers: { "Content-Type": blob.type || "audio/webm", "X-API-Key": keyInput.value.trim() },
+          body: blob,
+          signal: activeCall.abort.signal,
+        });
+        if (!response.ok) throw new Error("stt " + response.status);
+        return ((await response.json()).text || "").trim();
+      }
+
+      function fallbackToBrowserStt(activeCall) {
+        activeCall.stt = "browser";
+        showNotice("Серверное распознавание недоступно — слушаю браузером.");
+        listen(activeCall);
+      }
+
+      function listenServer(activeCall) {
+        const mic = activeCall.mic;
+        let recorder;
+        try {
+          recorder = new MediaRecorder(mic.stream);
+        } catch (e) {
+          fallbackToBrowserStt(activeCall);
+          return;
+        }
+        const chunks = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        const startedAt = performance.now();
+        let speechStart = 0;
+        let cancelled = false;
+        let pollId = null;
+
+        const finish = (send) => {
+          clearInterval(pollId);
+          serverListener = null;
+          recorder.onstop = async () => {
+            if (cancelled || !isActive(activeCall)) return;
+            if (!send) {
+              listen(activeCall);
+              return;
+            }
+            showCaption("Вы", "…");
+            setPhase("thinking");
+            let text = "";
+            try {
+              text = await transcribe(activeCall, new Blob(chunks, { type: recorder.mimeType }));
+            } catch (e) {
+              if (!isActive(activeCall)) return;
+              fallbackToBrowserStt(activeCall);
+              return;
+            }
+            if (!isActive(activeCall)) return;
+            if (text.length < STT_MIN_CHARS) {
+              showCaption("", "");
+              listen(activeCall);
+              return;
+            }
+            activeCall.failures = 0;
+            activeCall.uncertain = false;
+            handleUserTurn(activeCall, text);
+          };
+          try {
+            recorder.stop();
+          } catch (e) {}
+        };
+
+        pollId = setInterval(() => {
+          const now = performance.now();
+          if (!speechStart && mic.lastLoud >= startedAt) speechStart = mic.lastLoud;
+          if (!speechStart) {
+            if (now - startedAt > VAD_IDLE_RESTART_MS) finish(false);
+            return;
+          }
+          const silentFor = now - mic.lastLoud;
+          if (silentFor >= VAD_END_SILENCE_MS || now - speechStart > VAD_MAX_UTTERANCE_MS) {
+            finish(mic.lastLoud - speechStart >= VAD_MIN_SPEECH_MS);
+          }
+        }, VAD_POLL_MS);
+
+        serverListener = {
+          stop() {
+            cancelled = true;
+            clearInterval(pollId);
+            try {
+              recorder.stop();
+            } catch (e) {}
+          },
+        };
+        recorder.start();
+        setPhase("listening");
+      }
+
       // --- распознавание речи ---------------------------------------------
       function teardownRecognition() {
+        if (serverListener) {
+          serverListener.stop();
+          serverListener = null;
+        }
         if (!recognition) return;
         const rec = recognition;
         recognition = null;
@@ -1124,6 +1307,10 @@
         teardownRecognition();
         if (activeCall.muted) {
           setPhase("listening"); // статус покажет «Микрофон выключен»
+          return;
+        }
+        if (activeCall.stt === "server" && activeCall.mic) {
+          listenServer(activeCall);
           return;
         }
 
@@ -1311,9 +1498,25 @@
         setMuted(false);
         setPhase("connecting");
 
-        const [serverVoice] = await Promise.all([checkServerVoice(), sleep(CONNECT_DELAY_MS)]); // имитация дозвона
+        const [serverVoice, serverStt] = await Promise.all([
+          checkServerVoice(),
+          checkServerStt(),
+          sleep(CONNECT_DELAY_MS), // имитация дозвона
+        ]);
         if (!isActive(activeCall)) return;
         if (serverVoice && activeCall.audio) activeCall.voice = "server";
+        activeCall.stt = "browser";
+        if (serverStt && activeCall.audio && window.MediaRecorder && navigator.mediaDevices) {
+          try {
+            if (await ensureMic(activeCall)) activeCall.stt = "server";
+          } catch (e) {
+            if (e && e.name === "NotAllowedError") {
+              failCall(activeCall, "Нет доступа к микрофону. Разрешите его для этой страницы и позвоните снова.");
+              return;
+            }
+          }
+          if (!isActive(activeCall)) return;
+        }
 
         startTimer(activeCall);
         showCaption("Алина", GREETING);
@@ -1335,6 +1538,7 @@
         clearInterval(activeCall.timerId);
         activeCall.abort.abort();
         teardownRecognition();
+        if (activeCall.mic) activeCall.mic.destroy();
         if (activeCall.source) {
           try {
             activeCall.source.stop();
