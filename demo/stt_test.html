@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Тест распознавания речи</title>
+    <style>
+      :root {
+        --bg: #f6f7f9; --card: #fff; --text: #14161a; --muted: #6b7280; --line: #e3e6ea;
+        --accent: #e30611; --good: #12805c; --warn: #b45309;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #111317; --card: #1a1d23; --text: #eceef2; --muted: #9aa1ad; --line: #2b2f37; --good: #3ecf9b; --warn: #f0a24a; }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+      main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      p.lead { margin: 0 0 20px; color: var(--muted); }
+      section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+      label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+      input, textarea { width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+      textarea { min-height: 70px; resize: vertical; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      button { font: inherit; border: 0; border-radius: 10px; padding: 10px 16px; cursor: pointer; background: var(--accent); color: #fff; }
+      button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+      button:disabled { opacity: .5; cursor: default; }
+      #rec.on { animation: pulse 1s infinite; }
+      @keyframes pulse { 50% { opacity: .55; } }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { font-size: 12px; color: var(--muted); font-weight: 600; }
+      td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .good { color: var(--good); } .warn { color: var(--warn); } .muted { color: var(--muted); }
+      #status { min-height: 22px; color: var(--muted); font-size: 14px; }
+      audio { width: 100%; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Тест распознавания речи</h1>
+      <p class="lead">Запишите фразу один раз: её распознают все модели Polza и распознавание браузера. Если ввести, что вы на самом деле сказали, посчитается доля ошибочных слов (WER, меньше — лучше).</p>
+
+      <section>
+        <label for="key">API-ключ (X-API-Key)</label>
+        <input id="key" value="test-local-key" autocomplete="off" />
+      </section>
+
+      <section>
+        <label for="ref">Что вы скажете (эталон, по желанию)</label>
+        <textarea id="ref" placeholder="Например: Здравствуйте, подскажите, сколько стоит тариф Бизнес Старт"></textarea>
+        <div class="row" style="margin-top:12px">
+          <button id="rec">● Начать запись</button>
+          <button id="again" class="ghost" disabled>Распознать заново</button>
+          <span id="status"></span>
+        </div>
+        <audio id="player" controls hidden></audio>
+      </section>
+
+      <section>
+        <table>
+          <thead><tr><th>Модель</th><th>Текст</th><th>WER</th><th>Время</th><th>Цена</th></tr></thead>
+          <tbody id="results"><tr><td colspan="5" class="muted">Пока пусто. Нажмите «Начать запись».</td></tr></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const status = (t) => { $("status").textContent = t; };
+      const headers = () => ({ "X-API-Key": $("key").value.trim() });
+
+      let recorder, stream, chunks = [], blob = null, browserText = "", recognition = null;
+
+      function words(s) { return s.toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean); }
+      function wer(ref, hyp) {
+        const r = words(ref), h = words(hyp);
+        if (!r.length) return h.length ? 1 : 0;
+        let prev = Array.from({ length: h.length + 1 }, (_, i) => i);
+        for (let i = 1; i <= r.length; i++) {
+          const cur = [i];
+          for (let j = 1; j <= h.length; j++) cur.push(Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (r[i - 1] !== h[j - 1] ? 1 : 0)));
+          prev = cur;
+        }
+        return prev[h.length] / r.length;
+      }
+
+      function row(name, cells) {
+        const ref = $("ref").value.trim();
+        const tr = document.createElement("tr");
+        const w = ref && cells.text != null ? wer(ref, cells.text) : null;
+        const cls = w == null ? "muted" : w <= 0.1 ? "good" : "warn";
+        const nameTd = document.createElement("td"); nameTd.textContent = name;
+        const textTd = document.createElement("td"); textTd.textContent = cells.error || cells.text || "(пусто)";
+        if (cells.error) textTd.className = "warn";
+        const werTd = document.createElement("td"); werTd.className = "num " + cls; werTd.textContent = w == null ? "—" : Math.round(w * 100) + "%";
+        const timeTd = document.createElement("td"); timeTd.className = "num"; timeTd.textContent = cells.ms != null ? (cells.ms / 1000).toFixed(1) + " с" : "—";
+        const costTd = document.createElement("td"); costTd.className = "num"; costTd.textContent = cells.cost != null ? cells.cost.toFixed(3) + " ₽" : "—";
+        tr.append(nameTd, textTd, werTd, timeTd, costTd);
+        $("results").appendChild(tr);
+      }
+
+      async function recognizeAll() {
+        $("results").textContent = "";
+        $("again").disabled = true;
+        status("Распознаю…");
+        row("Браузер (Web Speech)", { text: browserText || null, error: browserText ? null : "браузер ничего не распознал" });
+        let models;
+        try {
+          const st = await fetch("/api/stt/status", { headers: headers() });
+          if (st.status === 401) throw new Error("Неверный API-ключ");
+          const info = await st.json();
+          if (!info.enabled) throw new Error("На сервере не задан POLZA_API_KEY");
+          models = info.models;
+        } catch (e) { status(e.message); $("again").disabled = false; return; }
+        for (const model of models) {
+          const t0 = performance.now();
+          try {
+            const r = await fetch("/api/stt?model=" + encodeURIComponent(model), {
+              method: "POST", headers: { ...headers(), "Content-Type": blob.type || "audio/webm" }, body: blob,
+            });
+            const ms = performance.now() - t0;
+            if (!r.ok) {
+              const d = (await r.json().catch(() => ({}))).detail;
+              const hint = r.status === 502 ? " (скорее всего, модель не разрешена на ключе Polza — 403)" : "";
+              row(model, { error: ((d && d.error && d.error.message) || "ошибка " + r.status) + hint, ms });
+            } else {
+              const d = await r.json();
+              row(model, { text: d.text, ms, cost: d.cost_rub });
+            }
+          } catch (e) { row(model, { error: e.message }); }
+        }
+        status("Готово.");
+        $("again").disabled = false;
+      }
+
+      function startBrowserRecognition() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        browserText = "";
+        if (!SR) return;
+        recognition = new SR();
+        recognition.lang = "ru-RU";
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) browserText += e.results[i][0].transcript + " "; };
+        recognition.onerror = () => {};
+        try { recognition.start(); } catch (e) {}
+      }
+
+      $("rec").onclick = async () => {
+        if (recorder && recorder.state === "recording") { recorder.stop(); return; }
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch (e) { status("Нет доступа к микрофону. Откройте страницу по адресу http://localhost:8000/demo/stt_test.html"); return; }
+        chunks = [];
+        recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          if (recognition) { try { recognition.stop(); } catch (e) {} }
+          $("rec").classList.remove("on"); $("rec").textContent = "● Начать запись";
+          blob = new Blob(chunks, { type: recorder.mimeType });
+          $("player").src = URL.createObjectURL(blob); $("player").hidden = false;
+          await new Promise((r) => setTimeout(r, 700)); // браузерный STT договаривает после остановки
+          recognizeAll();
+        };
+        startBrowserRecognition();
+        recorder.start();
+        $("rec").classList.add("on"); $("rec").textContent = "■ Остановить";
+        status("Говорите…");
+      };
+      $("again").onclick = () => blob && recognizeAll();
+    </script>
+  </body>
+</html>
