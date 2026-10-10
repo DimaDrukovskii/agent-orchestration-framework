@@ -6,6 +6,7 @@ from src.api import tts_routes
 from src.api import llm_routes
 from src.api import stt_routes
 from src.api import tenant_routes
+from src.api import analytics_routes
 from src.config import non_chat_model, settings
 from src.utils import logger
 
@@ -37,6 +38,7 @@ app.include_router(tts_routes.router, prefix="/api")
 app.include_router(llm_routes.router, prefix="/api")
 app.include_router(stt_routes.router, prefix="/api")
 app.include_router(tenant_routes.router, prefix="/api")
+app.include_router(analytics_routes.router, prefix="/api")
 
 # Демо-страницы (виджет, лендинг, служебные в demo/tools) — тот же origin, что и /api,
 # иначе fetch('/api/...') из demo/*.html упирается в CORS/file:// при

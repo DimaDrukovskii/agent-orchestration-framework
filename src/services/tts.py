@@ -24,6 +24,7 @@ from collections import OrderedDict
 from typing import Any, Dict, Optional, Tuple
 
 from src.config import settings
+from src.services.analytics import analytics
 from src.utils import logger
 
 
@@ -119,7 +120,10 @@ class TTSService:
             async with httpx.AsyncClient(timeout=20) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
-                return self.decode_polza_response(response.json())
+                body = response.json()
+                usage = body.get("usage") or {}
+                analytics.record("tts", usage.get("cost_rub", body.get("cost_rub")), model=payload["model"], units=len(text))
+                return self.decode_polza_response(body)
         except Exception as e:
             logger.error(f"TTS (polza) error: {str(e)}")
             raise

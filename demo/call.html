@@ -1154,7 +1154,7 @@
         try {
           const response = await fetch(TTS_URL, {
             method: "POST",
-            headers: apiHeaders(),
+            headers: { ...apiHeaders(), "X-Session-Id": widgetSessionId },
             body: JSON.stringify({ text: chunk }),
             signal: activeCall.abort.signal,
           });
@@ -1429,7 +1429,7 @@
       async function transcribe(activeCall, blob) {
         const response = await fetch(STT_URL, {
           method: "POST",
-          headers: { "Content-Type": blob.type || "audio/webm", "X-API-Key": keyInput.value.trim() },
+          headers: { "Content-Type": blob.type || "audio/webm", "X-API-Key": keyInput.value.trim(), "X-Session-Id": widgetSessionId },
           body: blob,
           signal: activeCall.abort.signal,
         });

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Аналитика диалогов</title>
+  <style>
+    :root {
+      --bg: #f4f1ea; --card: #fffdf8; --ink: #1d1b16; --muted: #6f6a5d; --line: #e3ddcd;
+      --llm: #2f6f5e; --tts: #c4622d; --stt: #5b6aa8; --good: #2f6f5e; --bad: #b3402a;
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #17161a; --card: #201f24; --ink: #efece4; --muted: #9b968a; --line: #34323a;
+              --llm: #5fb59d; --tts: #e08a57; --stt: #8e9be0; --good: #5fb59d; --bad: #e0705a; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+           font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 56px; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; justify-content: space-between; margin-bottom: 20px; }
+    h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    input, select, button { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line);
+                            border-radius: 10px; padding: 8px 12px; }
+    button { cursor: pointer; background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .value { font-size: 32px; font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .unit { font-size: 14px; color: var(--muted); font-weight: 400; }
+    .hint { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+    section { margin-top: 12px; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    .bar { height: 14px; border-radius: 7px; background: var(--line); overflow: hidden; display: flex; }
+    .bar > span { display: block; height: 100%; }
+    .row { display: grid; grid-template-columns: 150px 1fr 90px; gap: 10px; align-items: center; margin: 8px 0; font-size: 14px; }
+    .row .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: var(--muted); }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+    .days { display: flex; align-items: end; gap: 6px; height: 90px; }
+    .days div { flex: 1; background: var(--llm); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
+    .days small { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .tag { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
+    .tag.warn { color: var(--bad); border-color: var(--bad); }
+    #msg { color: var(--bad); margin: 12px 0; min-height: 1.2em; }
+    .good { color: var(--good); } .bad { color: var(--bad); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Аналитика диалогов</h1>
+      <div class="sub">Реальная стоимость из ответов провайдера. Озвучка и распознавание считаются только если провайдер вернул цену.</div>
+    </div>
+    <div class="controls">
+      <input id="apiKey" type="password" placeholder="API-ключ (X-API-Key)" autocomplete="off" />
+      <select id="days">
+        <option value="1">за сутки</option>
+        <option value="7" selected>за 7 дней</option>
+        <option value="30">за 30 дней</option>
+      </select>
+      <button id="load">Показать</button>
+    </div>
+  </header>
+  <div id="msg"></div>
+
+  <div class="grid" id="kpis"></div>
+
+  <section class="card">
+    <h2>Стоимость минуты разговора</h2>
+    <div id="compare"></div>
+    <div class="hint" id="compareNote"></div>
+  </section>
+
+  <section class="card">
+    <h2>Из чего складывается цена</h2>
+    <div class="bar" id="split"></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--llm)"></i>модель</span>
+      <span><i class="dot" style="background:var(--tts)"></i>озвучка</span>
+      <span><i class="dot" style="background:var(--stt)"></i>распознавание</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>По дням</h2>
+    <div class="days" id="days-chart"></div>
+    <div style="height:18px"></div>
+  </section>
+
+  <section class="card">
+    <h2>Последние диалоги</h2>
+    <table>
+      <thead><tr><th>Диалог</th><th>Когда (UTC)</th><th class="num">Реплик</th><th class="num">Стоимость</th><th></th></tr></thead>
+      <tbody id="recent"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const rub = (v, d = 2) => (v === null || v === undefined ? "—" : Number(v).toFixed(d).replace(".", ",") + " ₽");
+  const keyInput = $("apiKey");
+  try { keyInput.value = sessionStorage.getItem("mts_api_key") || ""; } catch (e) {}
+
+  function kpi(label, value, hint) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const l = document.createElement("div"); l.className = "label"; l.textContent = label;
+    const v = document.createElement("div"); v.className = "value"; v.textContent = value;
+    card.append(l, v);
+    if (hint) { const h = document.createElement("div"); h.className = "hint"; h.textContent = hint; card.append(h); }
+    return card;
+  }
+
+  function compareRow(name, value, max, color) {
+    const row = document.createElement("div"); row.className = "row";
+    const n = document.createElement("div"); n.textContent = name;
+    const track = document.createElement("div"); track.className = "bar";
+    const fill = document.createElement("span");
+    fill.style.width = (max ? Math.min(100, (value / max) * 100) : 0) + "%"; fill.style.background = color;
+    track.append(fill);
+    const num = document.createElement("div"); num.className = "num"; num.textContent = rub(value) + "/мин";
+    row.append(n, track, num);
+    return row;
+  }
+
+  function render(d) {
+    const k = $("kpis"); k.replaceChildren(
+      kpi("Диалогов", String(d.sessions), d.turns + " реплик агента"),
+      kpi("Цена диалога", rub(d.per_session_rub), "в среднем, всё вместе"),
+      kpi("Цена реплики", rub(d.per_turn_rub, 3), "модель + озвучка + распознавание"),
+      kpi("Переводов на человека", String(d.transfers), d.sessions ? Math.round((d.transfers / d.sessions) * 100) + "% диалогов" : ""),
+      kpi("Кэш промпта", d.cache_hit_share === null ? "—" : Math.round(d.cache_hit_share * 100) + "%", "доля входных токенов из кэша")
+    );
+
+    const cmp = $("compare"); cmp.replaceChildren();
+    const mine = d.per_minute_rub, bench = d.benchmark.per_minute_rub;
+    if (mine === null) {
+      cmp.textContent = "Пока нет голосовых данных: цена минуты считается по озвучке и распознаванию.";
+    } else {
+      const max = Math.max(mine, bench) * 1.1;
+      cmp.append(compareRow("Наш агент", mine, max, mine <= bench ? "var(--good)" : "var(--bad)"),
+                 compareRow(d.benchmark.name, bench, max, "var(--line)"));
+    }
+    $("compareNote").textContent = "Минуты речи оценены по длине озвученного текста (14 символов в секунду) и длине записей; это оценка, не замер линии. У Exolve к цене сессии добавляются номера и минуты связи.";
+
+    const c = d.cost_rub, total = c.total || 1;
+    $("split").replaceChildren(...[["llm", "--llm"], ["tts", "--tts"], ["stt", "--stt"]].map(([key, css]) => {
+      const s = document.createElement("span"); s.style.width = (c[key] / total) * 100 + "%"; s.style.background = "var(" + css + ")";
+      s.title = key + ": " + rub(c[key], 4); return s;
+    }));
+
+    const maxDay = Math.max(...d.by_day.map((x) => x.cost_rub), 0.0001);
+    $("days-chart").replaceChildren(...d.by_day.map((x) => {
+      const bar = document.createElement("div"); bar.style.height = Math.max(2, (x.cost_rub / maxDay) * 100) + "%";
+      bar.title = x.day + ": " + rub(x.cost_rub, 3) + ", диалогов " + x.sessions;
+      const lab = document.createElement("small"); lab.textContent = x.day.slice(5); bar.append(lab); return bar;
+    }));
+
+    $("recent").replaceChildren(...d.recent.map((r) => {
+      const tr = document.createElement("tr");
+      const cells = [r.session_id, r.last_at, String(r.turns), rub(r.cost_rub, 3)];
+      cells.forEach((text, i) => { const td = document.createElement("td"); if (i > 1) td.className = "num"; td.textContent = text; tr.append(td); });
+      const last = document.createElement("td");
+      if (r.transferred) { const t = document.createElement("span"); t.className = "tag warn"; t.textContent = "на человека"; last.append(t); }
+      tr.append(last); return tr;
+    }));
+  }
+
+  async function load() {
+    const msg = $("msg"); msg.textContent = "";
+    const key = keyInput.value.trim();
+    try { sessionStorage.setItem("mts_api_key", key); } catch (e) {}
+    try {
+      const response = await fetch("/api/analytics/summary?days=" + $("days").value, { headers: { "X-API-Key": key } });
+      if (response.status === 401) { msg.textContent = "Неверный API-ключ."; return; }
+      if (!response.ok) { msg.textContent = "Сервер ответил " + response.status; return; }
+      render(await response.json());
+    } catch (e) { msg.textContent = "Сервер недоступен."; }
+  }
+  $("load").addEventListener("click", load);
+  $("days").addEventListener("change", load);
+  if (keyInput.value) load();
+</script>
+</body>
+</html>

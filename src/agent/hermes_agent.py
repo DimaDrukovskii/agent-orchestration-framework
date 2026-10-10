@@ -12,6 +12,7 @@ settings.llm_provider:
 import json
 from typing import List, Dict, Any, AsyncGenerator, Optional
 from src.config import settings
+from src.services.analytics import analytics
 from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context, load_site_map, open_section_tool
 from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_LINKS_RULE, HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
@@ -72,6 +73,14 @@ def log_usage(response: Any, model: str) -> None:
     logger.info(
         f"LLM usage model={model} in={getattr(usage, 'prompt_tokens', 0)} "
         f"cached={cached} out={getattr(usage, 'completion_tokens', 0)}"
+    )
+    analytics.record(
+        "llm",
+        getattr(usage, "cost_rub", 0),  # реальная цена запроса от провайдера
+        model=model,
+        tokens_in=getattr(usage, "prompt_tokens", 0),
+        tokens_out=getattr(usage, "completion_tokens", 0),
+        tokens_cached=cached,
     )
 
 

@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     storage_backend: str = "sqlite"
     sqlite_path: str = "data/hermes.db"  # относительно корня репо
 
+    # С чем сравнивать стоимость минуты на панели аналитики (demo/tools/analytics.html).
+    # МТС Exolve, голосовая сессия робота: от 0,02 ₽/с = 1,2 ₽/мин (exolve.ru/products/robots, 2026-10).
+    benchmark_name: str = "МТС Exolve, голосовой робот"
+    benchmark_rub_per_minute: float = 1.2
+
     # Supabase — только при storage_backend="supabase"
     supabase_url: str = ""
     supabase_key: str = ""

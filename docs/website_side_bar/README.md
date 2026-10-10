@@ -15,6 +15,7 @@
 | Распознавание | `src/services/stt.py`, `src/api/stt_routes.py` | `gpt-4o-transcribe` через Polza; в виджете шумоподавление и отсечение пауз |
 | Клиент | `src/tenant.py`, `tenants/` | промпт, база, разделы сайта, подписи |
 | Стоимость | `src/config.py`, `hermes_agent.py` | кэш промпта, предвыборка из базы, потолок ответа, лимит реплик |
+| Аналитика | `src/services/analytics.py`, `src/api/analytics_routes.py`, `demo/tools/analytics.html` | реальная цена каждого вызова (из ответа провайдера), цена диалога и минуты, сравнение с конкурентом, переводы на человека; `GET /api/analytics/summary` |
 
 ## Встроить на сайт
 

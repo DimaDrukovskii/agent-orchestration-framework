@@ -6,11 +6,12 @@ POST /api/tts        -> audio/mpeg            (озвучка одной реп�
 X-API-Key, как и для /api/hermes/dialog.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from src.api.auth import verify_api_key
+from src.services.analytics import session_var
 from src.services.tts import TTSNotConfigured, tts_service
 from src.utils import logger
 
@@ -36,7 +37,8 @@ async def tts_status():
 
 
 @router.post("/tts")
-async def synthesize(request: TTSRequest):
+async def synthesize(request: TTSRequest, http: Request):
+    session_var.set(http.headers.get("x-session-id", "")[:128])
     if not tts_service.enabled:
         raise _error(503, "tts_not_configured", "Серверная озвучка не настроена", False)
     try:

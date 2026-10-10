@@ -9,6 +9,7 @@ from redis.exceptions import RedisError
 from src.agent.hermes_agent import HermesAgent
 from src.api.auth import verify_api_key
 from src.config import settings
+from src.services.analytics import session_var
 from src.services.cache import CacheService
 from src.utils import logger, mask_phone
 
@@ -179,6 +180,7 @@ async def hermes_dialog(request: HermesDialogRequest):
     клиенту не нужно передавать историю. Каждая реплика также пишется в Supabase (calls)
     для аналитики и аудита.
     """
+    session_var.set(request.session_id)  # расходы этого запроса запишутся на этот разговор
     try:
         history = await _get_session(request.session_id)
         history.append({"role": "user", "content": request.user_message})

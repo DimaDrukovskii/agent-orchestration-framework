@@ -34,6 +34,10 @@
 | `STORAGE_BACKEND` | `sqlite` | `sqlite` \| `supabase` (тогда нужны `SUPABASE_URL`, `SUPABASE_KEY`; схема — `docs/website_side_bar/DATABASE_SCHEMA.md`) |
 | `SQLITE_PATH` | `data/hermes.db` | путь к файлу, относительный — от корня репо |
 | `OPENAI_API_KEY` | `""` | не используется, можно не задавать |
+| `BENCHMARK_NAME` | `МТС Exolve, голосовой робот` | с чем сравнивается цена минуты на панели аналитики |
+| `BENCHMARK_RUB_PER_MINUTE` | `1.2` | цена минуты у конкурента, ₽ (Exolve: от 0,02 ₽/с, exolve.ru/products/robots) |
+
+Расходы (`usage_events`) пишутся в тот же SQLite-файл независимо от `STORAGE_BACKEND`.
 
 ## Есть дефолты в коде — можно не трогать
 

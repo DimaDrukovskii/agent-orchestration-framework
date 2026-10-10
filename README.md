@@ -22,13 +22,13 @@
 
 ```
 src/                 ядро (FastAPI): агент, инструменты, сессии, STT/TTS, клиент (tenant)
-demo/                виджет call.html (встраиваемый), лендинг index.html, tools/ (служебные: connect, history, stt_test)
+demo/                виджет call.html (встраиваемый), лендинг index.html, tools/ (служебные: connect, history, stt_test, analytics)
 tenants/
   mts/               данные МТС: prompt.md, knowledge/, site_map.json, tenant.json
   _template/         заготовка для новой компании
 docker/              Dockerfile, docker-compose.yml (приложение и Redis)
-tests/               автотесты (96), без сетевых вызовов
-scripts/             load_test.py (нагрузка без платных запросов), test_call.py (сценарии текстом)
+tests/               автотесты (102), без сетевых вызовов
+scripts/             load_test.py (нагрузка без платных запросов), measure_cost.py (ПЛАТНЫЙ замер цены диалога и минуты), test_call.py (сценарии текстом)
 docs/
   website_side_bar/  продукт: архитектура, переменные окружения, подключение модели, голосовой конвейер, БД
   mts/               проект МТС: план Трека 1, контракт интеграции, комплаенс, масштабирование, результаты
