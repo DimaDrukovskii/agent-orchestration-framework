@@ -29,6 +29,20 @@ def test_polza_key_check_outcomes():
     assert setup.check_polza_key("k", lambda *a, **k: (200, "{}"))[0] is True
     ok, message = setup.check_polza_key("k", lambda *a, **k: (401, ""))
     assert not ok and "не принял" in message
+    ok, message = setup.check_polza_key("k", lambda *a, **k: (402, "INSUFFICIENT_BALANCE"))
+    assert not ok and "пополните" in message
+
+
+def test_key_check_really_calls_the_authorized_endpoint():
+    seen = {}
+
+    def fake(method, url, headers, data, timeout):
+        seen.update(method=method, url=url, auth=headers["Authorization"], body=json.loads(data))
+        return 200, "{}"
+
+    setup.check_polza_key("my-key", fake)
+    assert seen["method"] == "POST" and seen["url"].endswith("/chat/completions") and seen["auth"] == "Bearer my-key"
+    assert seen["body"]["max_tokens"] == 1
 
 
 def test_network_failure_is_retried(monkeypatch):
@@ -92,3 +106,25 @@ def test_bad_key_stops_the_installer(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         setup.configure_env(tmp_path / ".env", SimpleNamespace(yes=True, tenant="mts", skip_checks=False))
     assert not (tmp_path / ".env").exists()
+
+
+def test_ssl_context_falls_back_to_system_bundle():
+    calls = []
+
+    def factory(cafile=None):
+        calls.append(cafile)
+        return SimpleNamespace(cert_store_stats=lambda: {"x509_ca": 0 if cafile is None else 1})
+
+    setup.ssl_context(factory, lambda path: path == "/etc/ssl/cert.pem", use_certifi=False)
+    assert calls == [None, "/etc/ssl/cert.pem"]
+
+
+def test_ssl_context_is_left_alone_when_python_has_certificates():
+    calls = []
+
+    def factory(cafile=None):
+        calls.append(cafile)
+        return SimpleNamespace(cert_store_stats=lambda: {"x509_ca": 120})
+
+    setup.ssl_context(factory, lambda path: True)
+    assert calls == [None]

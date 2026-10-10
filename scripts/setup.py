@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import shutil
+import ssl
 import subprocess
 import sys
 import time
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
-POLZA_MODELS_URL = "https://polza.ai/api/v1/models"
+POLZA_CHAT_URL = "https://polza.ai/api/v1/chat/completions"
 DEFAULT_CHAT_MODEL = "anthropic/claude-haiku-5.5"
 NON_CHAT_MARKERS = ("transcribe", "whisper", "text-to-speech", "speech", "tts")
 LOCAL_URL = "http://localhost:8000"
@@ -40,11 +41,32 @@ Http = Callable[..., Tuple[int, str]]
 
 # ---- сеть (подменяется в тестах) ------------------------------------------------------------------------------
 
+CA_BUNDLES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
+
+
+def ssl_context(factory=ssl.create_default_context, exists=os.path.exists, use_certifi: bool = True) -> ssl.SSLContext:
+    """Python с python.org на macOS не знает корневых сертификатов (CERTIFICATE_VERIFY_FAILED): берём системные."""
+    context = factory()
+    if context.cert_store_stats().get("x509_ca", 0) > 0:
+        return context
+    if use_certifi:
+        try:
+            import certifi  # type: ignore
+
+            return factory(cafile=certifi.where())
+        except ImportError:
+            pass
+    for path in CA_BUNDLES:
+        if exists(path):
+            return factory(cafile=path)
+    return context
+
+
 def http_request(method: str, url: str, headers: Optional[Dict[str, str]] = None, data: Optional[bytes] = None,
                  timeout: float = 15) -> Tuple[int, str]:
     request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=ssl_context()) as response:
             return response.status, response.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
@@ -108,14 +130,19 @@ def base_settings(tenant: str) -> Dict[str, str]:
 # ---- проверки ключей ------------------------------------------------------------------------------------------
 
 def check_polza_key(key: str, http: Http = http_request) -> Tuple[bool, str]:
-    status, body = with_retries(lambda: http("GET", POLZA_MODELS_URL, {"Authorization": f"Bearer {key}"}, None, 15))
+    """Реальная проверка: /models у polza.ai открыт без ключа, поэтому спрашиваем модель на один токен (доли копейки)."""
+    body = json.dumps({"model": DEFAULT_CHAT_MODEL, "max_tokens": 1, "messages": [{"role": "user", "content": "ok"}]}).encode()
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    status, text = with_retries(lambda: http("POST", POLZA_CHAT_URL, headers, body, 30))
     if status == 200:
         return True, "ключ polza.ai принят"
     if status in (401, 403):
-        return False, "polza.ai не принял ключ (401/403): проверьте, что скопирован целиком"
+        return False, "polza.ai не принял ключ (401/403): проверьте, что скопирован целиком и модель разрешена для ключа"
+    if status == 402:
+        return False, "ключ принят, но на счёте меньше 1 ₽: пополните баланс в кабинете polza.ai"
     if status == 0:
-        return False, f"нет связи с polza.ai: {body[:80]}"
-    return False, f"polza.ai ответил {status}"
+        return False, f"нет связи с polza.ai: {text[:80]}"
+    return False, f"polza.ai ответил {status}: {text[:100]}"
 
 
 def _basic(sid: str, token: str) -> Dict[str, str]:
