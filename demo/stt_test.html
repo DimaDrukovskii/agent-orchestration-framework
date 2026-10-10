@@ -147,15 +147,50 @@
         try { recognition.start(); } catch (e) {}
       }
 
+      // Запись идёт через фильтр и «ворота»: тихий фон (голоса вдали) приглушается,
+      // громкая речь в микрофон проходит. Порог = фон первых 0,7 с * 2,5 (но не ниже минимума).
+      let gateCtx = null;
+      const GATE_MIN = 0.012, GATE_FACTOR = 2.5, GATE_HOLD_MS = 350, CALIBRATE_MS = 700;
+      function gatedStream(input) {
+        gateCtx = new AudioContext();
+        const source = gateCtx.createMediaStreamSource(input);
+        const highpass = gateCtx.createBiquadFilter();
+        highpass.type = "highpass"; highpass.frequency.value = 120;
+        const analyser = gateCtx.createAnalyser(); analyser.fftSize = 1024;
+        const gain = gateCtx.createGain(); gain.gain.value = 0;
+        const out = gateCtx.createMediaStreamDestination();
+        source.connect(highpass); highpass.connect(analyser); highpass.connect(gain); gain.connect(out);
+        const buf = new Float32Array(analyser.fftSize);
+        const t0 = performance.now();
+        let ambient = 0, threshold = GATE_MIN, lastLoud = 0;
+        const tick = () => {
+          if (!gateCtx || gateCtx.state === "closed") return;
+          analyser.getFloatTimeDomainData(buf);
+          let sum = 0; for (const v of buf) sum += v * v;
+          const rms = Math.sqrt(sum / buf.length), now = performance.now();
+          if (now - t0 < CALIBRATE_MS) { ambient = Math.max(ambient, rms); threshold = Math.max(GATE_MIN, ambient * GATE_FACTOR); }
+          else if (rms > threshold) lastLoud = now;
+          const open = now - t0 >= CALIBRATE_MS && now - lastLoud < GATE_HOLD_MS;
+          gain.gain.setTargetAtTime(open ? 1 : 0, gateCtx.currentTime, 0.02);
+          requestAnimationFrame(tick);
+        };
+        tick();
+        return out.stream;
+      }
+
       $("rec").onclick = async () => {
         if (recorder && recorder.state === "recording") { recorder.stop(); return; }
-        try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-        catch (e) { status("Нет доступа к микрофону. Откройте страницу по адресу http://localhost:8000/demo/stt_test.html"); return; }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true, channelCount: 1 },
+          });
+        } catch (e) { status("Нет доступа к микрофону. Откройте страницу по адресу http://localhost:8000/demo/stt_test.html"); return; }
         chunks = [];
-        recorder = new MediaRecorder(stream);
+        recorder = new MediaRecorder(gatedStream(stream));
         recorder.ondataavailable = (e) => chunks.push(e.data);
         recorder.onstop = async () => {
           stream.getTracks().forEach((t) => t.stop());
+          if (gateCtx) { gateCtx.close(); gateCtx = null; }
           if (recognition) { try { recognition.stop(); } catch (e) {} }
           $("rec").classList.remove("on"); $("rec").textContent = "● Начать запись";
           blob = new Blob(chunks, { type: recorder.mimeType });
