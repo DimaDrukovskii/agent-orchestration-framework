@@ -63,3 +63,16 @@ def test_synthesize_polza_not_configured_without_key(polza, monkeypatch):
 
 def test_module_exposes_singleton():
     assert isinstance(tts_module.tts_service, TTSService)
+
+
+def test_polza_elevenlabs_params_only_for_elevenlabs_models(polza, monkeypatch):
+    monkeypatch.setattr(settings, "tts_model", "google/gemini-3.1-flash-tts-preview")
+    monkeypatch.setattr(settings, "tts_voice_id", "Aoede")
+    _, _, payload = polza.build_polza_request("привет")
+    assert payload["model"] == "google/gemini-3.1-flash-tts-preview"
+    assert payload["voice"] == "Aoede"
+    assert "stability" not in payload and "similarity_boost" not in payload
+
+    monkeypatch.setattr(settings, "tts_model", "elevenlabs/text-to-speech-turbo-2-5")
+    _, _, payload = polza.build_polza_request("привет")
+    assert payload["stability"] == settings.tts_stability

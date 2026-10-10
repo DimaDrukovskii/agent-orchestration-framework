@@ -56,14 +56,16 @@ class TTSService:
             "Authorization": f"Bearer {settings.polza_api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
-            "model": settings.tts_model or POLZA_DEFAULT_MODEL,
+        model = settings.tts_model or POLZA_DEFAULT_MODEL
+        payload: Dict[str, Any] = {
+            "model": model,
             "voice": settings.tts_voice_id or POLZA_DEFAULT_VOICE,
             "input": text,
             "response_format": "mp3",
-            "stability": settings.tts_stability,
-            "similarity_boost": settings.tts_similarity,
         }
+        if model.startswith("elevenlabs/"):  # эти поля понимает только семейство ElevenLabs
+            payload["stability"] = settings.tts_stability
+            payload["similarity_boost"] = settings.tts_similarity
         return url, headers, payload
 
     @staticmethod
