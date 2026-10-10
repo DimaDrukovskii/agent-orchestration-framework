@@ -26,9 +26,9 @@ ENV
 cat > "$HERMES_HOME/config.yaml" <<YAML
 model:
   default: ${HERMES_MODEL:-anthropic/claude-sonnet-4}
-  provider: polza
-  base_url: https://polza.ai/api/v1/
-  key_env: POLZA_API_KEY
+  provider: custom
+  base_url: https://polza.ai/api/v1
+  api_key: "${POLZA_API_KEY}"
 YAML
 
 exec hermes gateway run
