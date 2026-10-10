@@ -29,8 +29,8 @@ def test_notes_block_goes_into_the_last_user_message_only():
     messages = [{"role": "user", "content": "привет"}, {"role": "assistant", "content": "здравствуйте"},
                 {"role": "user", "content": "а как меня зовут?"}]
     result = with_kb_context(messages, "", notes="Абонента зовут Иван; в семье трое")
-    assert "ЗАМЕТКИ" in result[-1]["content"] and "Иван" in result[-1]["content"]
-    assert result[0]["content"] == "привет" and "ЗАМЕТКИ" not in messages[-1]["content"]
+    assert "ПАМЯТЬ ОБ ЭТОМ ЗВОНКЕ" in result[-1]["content"] and "Иван" in result[-1]["content"]
+    assert result[0]["content"] == "привет" and "ПАМЯТЬ" not in messages[-1]["content"]
 
 
 def test_notes_cover_what_falls_out_of_the_window(monkeypatch):
