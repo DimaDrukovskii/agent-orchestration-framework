@@ -342,9 +342,6 @@
         text-align: center;
       }
 
-      .stage .orb {
-        margin-bottom: 14px;
-      }
 
       .status {
         font-size: 16px;
@@ -389,27 +386,136 @@
         color: var(--color-ink);
       }
 
+      /* лента диалога: и голос, и текст попадают сюда */
       .chat {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        max-height: 150px;
+        min-height: 96px;
+        max-height: 190px;
         margin-bottom: 12px;
         overflow-y: auto;
       }
 
-      .chat[hidden] {
-        display: none;
-      }
-
       .chat-msg {
+        max-width: 88%;
         padding: 8px 12px;
-        border-radius: 14px 14px 14px 4px;
-        background: rgba(127, 127, 127, 0.16);
-        color: var(--color-ink);
+        border-radius: 16px;
         font-size: 13px;
         line-height: 1.4;
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .chat-msg.from-agent {
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+        background: var(--color-chip);
+        color: var(--color-ink);
+      }
+
+      .chat-msg.from-user {
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+        background: var(--color-ink);
+        color: var(--color-card);
+      }
+
+      .chat-msg.pending {
+        opacity: 0.55;
+      }
+
+      .orb-wrap {
+        position: relative;
+        margin-bottom: 14px;
+      }
+
+      .stage .orb {
+        --orb: 104px;
+        margin-bottom: 0;
+      }
+
+      /* кнопка звонка по центру круга, как в ElevenLabs */
+      .btn.btn-start {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        z-index: 2;
+        flex: none;
+        width: 46px;
+        height: 46px;
+        padding: 0;
+        transform: translate(-50%, -50%);
+        background: #fff;
+        color: #14161a;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      }
+
+      .btn.btn-start:hover {
+        transform: translate(-50%, -50%) scale(1.07);
+      }
+
+      .btn.btn-start:active {
+        transform: translate(-50%, -50%) scale(0.95);
+      }
+
+      .caption,
+      .caption[hidden] {
+        display: none; /* текущая реплика теперь видна в ленте диалога */
+      }
+
+      .widget[data-phase="idle"] .controls,
+      .widget[data-phase="ended"] .controls {
+        display: none;
+      }
+
+      .composer {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .composer input {
+        flex: 1;
+        min-width: 0;
+        height: 42px;
+        padding: 0 16px;
+        border: 1px solid var(--color-line);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--color-ink);
+        font: inherit;
+        font-size: 14px;
+      }
+
+      .composer input::placeholder {
+        color: var(--color-ink-soft);
+      }
+
+      .composer input:focus-visible {
+        outline: 2px solid var(--color-ink);
+        outline-offset: 1px;
+      }
+
+      .send-btn {
+        flex: none;
+        width: 42px;
+        height: 42px;
+        border: none;
+        border-radius: 50%;
+        background: var(--color-ink);
+        color: var(--color-card);
+        cursor: pointer;
+      }
+
+      .send-btn svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
       .notice {
@@ -610,8 +716,15 @@
         </header>
 
         <div class="stage" aria-live="polite">
-          <div class="orb" aria-hidden="true">
-            <i class="blob"></i><i class="blob"></i><i class="blob"></i><i class="blob"></i>
+          <div class="orb-wrap">
+            <div class="orb" aria-hidden="true">
+              <i class="blob"></i><i class="blob"></i><i class="blob"></i><i class="blob"></i>
+            </div>
+            <button class="btn btn-start" id="startBtn" type="button" aria-label="Начать звонок">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+            </svg>
+            </button>
           </div>
           <p class="status" id="status">Готовы поговорить?</p>
           <p class="timer" id="timer"></p>
@@ -621,7 +734,9 @@
           </div>
         </div>
 
-        <div class="chat" id="chat" aria-label="Сообщения в чат" hidden></div>
+        <div class="chat" id="chat" role="log" aria-live="polite" aria-label="Диалог">
+          <div class="chat-msg from-agent">Здравствуйте! Я Алина, ИИ-ассистент МТС. Спросите про тарифы, услуги или роуминг: голосом или текстом.</div>
+        </div>
 
         <div class="notice" id="notice" hidden></div>
 
@@ -634,12 +749,6 @@
               <line class="mute-slash" x1="3" y1="3" x2="21" y2="21" />
             </svg>
           </button>
-          <button class="btn btn-start" id="startBtn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
-            Начать звонок
-          </button>
           <button class="btn btn-end" id="endBtn" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -647,6 +756,13 @@
             Завершить
           </button>
         </div>
+
+        <form class="composer" id="composer" autocomplete="off">
+          <input id="textInput" type="text" placeholder="Или напишите сообщение…" maxlength="500" aria-label="Сообщение" />
+          <button class="send-btn" type="submit" aria-label="Отправить">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
+          </button>
+        </form>
 
         <div class="settings" id="settings" hidden>
           <div>Голос: <span class="voice-mode" id="voiceMode">проверяю…</span></div>
@@ -758,6 +874,7 @@
 
       // --- состояние ------------------------------------------------------
       let call = null; // активный звонок или null
+      const widgetSessionId = newSessionId(); // один разговор: текст и голос продолжают друг друга
       let recognition = null;
       let voices = [];
       let selectedVoiceURI = storeGet("mts_call_voice");
@@ -807,18 +924,14 @@
         captionText.textContent = text;
       }
 
-      // голос -> чат: то, что агент отправил текстом (цены, шаги, ссылки), остаётся на экране
-      function addChat(messages) {
-        for (const text of messages) {
-          const bubble = document.createElement("div");
-          bubble.className = "chat-msg";
-          bubble.textContent = text;
-          chatEl.appendChild(bubble);
-        }
-        if (messages.length) {
-          chatEl.hidden = false;
-          chatEl.scrollTop = chatEl.scrollHeight;
-        }
+      // лента диалога: реплики голосом и текстом показываются здесь же; возвращает элемент пузыря
+      function addMessage(role, text) {
+        const bubble = document.createElement("div");
+        bubble.className = "chat-msg " + (role === "user" ? "from-user" : "from-agent");
+        bubble.textContent = text;
+        chatEl.appendChild(bubble);
+        chatEl.scrollTop = chatEl.scrollHeight;
+        return bubble;
       }
 
       function showNotice(html) {
@@ -1496,6 +1609,7 @@
         activeCall.busy = true; // пока агент думает и говорит, микрофон не слушаем
         teardownRecognition();
         showCaption("Вы", text);
+        addMessage("user", text);
         setPhase("thinking");
 
         const result = await requestAgent(activeCall, text);
@@ -1511,7 +1625,8 @@
           return;
         }
 
-        addChat(result.chat || []);
+        addMessage("agent", result.reply);
+        (result.chat || []).forEach((extra) => addMessage("agent", extra));
         showCaption("Алина", result.reply);
         setPhase("speaking");
         await speak(activeCall, result.reply, { interruptible: !result.transfer });
@@ -1540,7 +1655,7 @@
       async function startCall() {
         if (call || !checkEnvironment()) return;
         const activeCall = {
-          sessionId: newSessionId(),
+          sessionId: widgetSessionId,
           muted: false,
           busy: true,
           ended: false,
@@ -1567,8 +1682,6 @@
 
         timerEl.textContent = "";
         showCaption("", "");
-        chatEl.textContent = "";
-        chatEl.hidden = true;
         showNotice("");
         setMuted(false);
         setPhase("connecting");
@@ -1659,6 +1772,42 @@
           listen(call);
         }
       }
+
+      // --- текстовые сообщения --------------------------------------------
+      const composer = $("composer");
+      const textInput = $("textInput");
+
+      async function submitText() {
+        const text = textInput.value.trim();
+        if (!text) return;
+        if (call && (call.busy || call.ended)) {
+          showNotice("Алина отвечает, напишите через секунду.");
+          setTimeout(() => showNotice(""), 2500);
+          return;
+        }
+        textInput.value = "";
+        showNotice("");
+        if (call) {
+          handleUserTurn(call, text); // во время звонка текст идёт как обычная реплика, ответ озвучивается
+          return;
+        }
+        addMessage("user", text);
+        const pending = addMessage("agent", "…");
+        pending.classList.add("pending");
+        const result = await requestAgent({ sessionId: widgetSessionId, uncertain: false }, text);
+        pending.remove();
+        if (result.fatal) {
+          showNotice(result.fatal);
+          return;
+        }
+        addMessage("agent", result.reply);
+        (result.chat || []).forEach((extra) => addMessage("agent", extra));
+      }
+
+      composer.addEventListener("submit", (event) => {
+        event.preventDefault();
+        submitText();
+      });
 
       // --- события --------------------------------------------------------
       $("launcher").addEventListener("click", () => setOpen(true));
