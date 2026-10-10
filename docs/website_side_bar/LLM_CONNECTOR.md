@@ -1,6 +1,6 @@
 # Подключение модели
 
-Агент (`src/agent/hermes_agent.py`) работает с тремя профилями; «Hermes» в названии класса это имя нашего агента, а не одноимённой модели.
+Агент (`src/agent/hermes_agent.py`) работает с четырьмя профилями; «Hermes» в названии класса это имя нашего агента, а не одноимённой модели.
 
 | `provider` | Что это | Как выбирается |
 |---|---|---|
@@ -9,7 +9,7 @@
 | `hermes_agent` | настоящий Hermes Agent (Nous Research) как «мозг»: его OpenAI-совместимый сервер, модель и MCP-инструменты настраиваются на его стороне; наши tools ему не отправляются | `HERMES_AGENT_*`, `docker compose --profile hermes up -d`; для звонка `TELEPHONY_MODEL_PROFILE=hermes_agent` |
 | `local` | модель на любом OpenAI-совместимом сервере: Ollama, LM Studio, vLLM, в том числе на другом устройстве | `LOCAL_BASE_URL`, `LOCAL_MODEL`; на запрос полем `model_profile: "local"` или в настройках виджета |
 
-`polza` и `local` идут одним путём (`_run_openai`), история хранится в формате `tool_calls`. Доступность локального сервера отдаёт `GET /api/llm/status`.
+`polza`, `local` и `hermes_agent` идут одним OpenAI-совместимым путём (`_run_openai` и потоковый `run_stream`), история хранится в формате `tool_calls`. Доступность локального сервера отдаёт `GET /api/llm/status`.
 
 ## Агент, модель и MCP: кто за что отвечает
 
