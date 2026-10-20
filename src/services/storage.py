@@ -1,6 +1,7 @@
 import asyncio
 from supabase import create_client, Client
 from src.config import settings
+from src.services.sqlite_store import HANDOFF_COLUMNS
 from src.utils import logger
 from typing import Optional, List
 
@@ -93,6 +94,30 @@ class StorageService:
         except Exception as e:
             logger.error(f"Error upserting call: {str(e)}")
             raise
+
+    async def save_handoff_card(self, call_id: str, card: dict) -> dict:
+        """Карточка для менеджера по звонку (таблица handoff_cards). Пустые поля не пишутся."""
+        try:
+            if self._sqlite:
+                return await self._sqlite.save_handoff_card(call_id, card)
+
+            data = {"call_id": call_id, **{k: v for k, v in card.items() if k in HANDOFF_COLUMNS and v}}
+            response = await asyncio.to_thread(
+                lambda: self.client.table("handoff_cards").insert(data).execute()
+            )
+            return response.data[0] if response.data else {}
+
+        except Exception as e:
+            logger.error(f"Error saving handoff card: {type(e).__name__}")
+            raise
+
+    async def get_handoff_cards(self, call_id: str) -> List[dict]:
+        if self._sqlite:
+            return await self._sqlite.get_handoff_cards(call_id)
+        response = await asyncio.to_thread(
+            lambda: self.client.table("handoff_cards").select("*").eq("call_id", call_id).order("id").execute()
+        )
+        return response.data or []
 
     async def get_call(self, call_id: str) -> Optional[dict]:
         """Retrieve call record"""

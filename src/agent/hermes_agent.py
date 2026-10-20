@@ -125,7 +125,7 @@ def pop_sentences(buffer: str) -> Tuple[List[str], str]:
 
 
 def new_turn_state() -> Dict[str, Any]:
-    return {"pending_transfer": None, "chat": [], "links": []}
+    return {"pending_transfer": None, "handoff_card": None, "chat": [], "links": []}
 
 
 def apply_tool(name: str, tool_input: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,6 +134,8 @@ def apply_tool(name: str, tool_input: Dict[str, Any], state: Dict[str, Any]) -> 
     result = execute_tool(name, tool_input)
     if name == "transfer_to_department":
         state["pending_transfer"] = result
+    elif name == "save_handoff_card" and result.get("card"):
+        state["handoff_card"] = result["card"]
     elif name == "send_to_chat" and result.get("text"):
         state["chat"].append(result["text"])
     elif name == "show_section" and result.get("url"):
@@ -151,7 +153,7 @@ def escalation_result(messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]
     state = new_turn_state()
     apply_tool("transfer_to_department", {"department": department, "reason": reason}, state)
     return {"response": phrase, "messages": messages + [{"role": "assistant", "content": phrase}],
-            "pending_transfer": state["pending_transfer"], "chat": [], "links": []}
+            "pending_transfer": state["pending_transfer"], "handoff_card": None, "chat": [], "links": []}
 
 
 class HermesAgent:
@@ -249,6 +251,7 @@ class HermesAgent:
         caller_phone: str
     ) -> Dict[str, Any]:
         working_messages = messages.copy()
+        state = new_turn_state()
         pending_transfer = None
 
         for iteration in range(MAX_TOOL_ITERATIONS):
@@ -272,18 +275,16 @@ class HermesAgent:
                 return {
                     "response": final_text,
                     "messages": working_messages,
-                    "pending_transfer": pending_transfer
+                    "pending_transfer": pending_transfer,
+                    "handoff_card": state["handoff_card"],
                 }
 
             working_messages.append({"role": "assistant", "content": response.content})
 
             tool_results = []
             for tool_block in tool_use_blocks:
-                logger.info(f"Tool call: {tool_block.name}({tool_block.input})")
-                result = execute_tool(tool_block.name, tool_block.input)
-
-                if tool_block.name == "transfer_to_department":
-                    pending_transfer = result
+                result = apply_tool(tool_block.name, tool_block.input, state)
+                pending_transfer = state["pending_transfer"]
 
                 tool_results.append({
                     "type": "tool_result",
@@ -309,7 +310,8 @@ class HermesAgent:
         return {
             "response": final_text,
             "messages": working_messages,
-            "pending_transfer": pending_transfer
+            "pending_transfer": pending_transfer,
+            "handoff_card": state["handoff_card"],
         }
 
     # ---- Потоковый ответ: фраза уходит абоненту, как только модель её сказала ----
@@ -412,6 +414,7 @@ class HermesAgent:
                 working.append({"role": "assistant", "content": final})
                 yield {"type": "done", "result": {
                     "response": final, "messages": working, "pending_transfer": state["pending_transfer"],
+                    "handoff_card": state["handoff_card"],
                     "chat": state["chat"], "links": state["links"]}}
                 return
 
@@ -437,6 +440,7 @@ class HermesAgent:
         working.append({"role": "assistant", "content": final})
         yield {"type": "done", "result": {
             "response": final, "messages": working, "pending_transfer": state["pending_transfer"],
+                    "handoff_card": state["handoff_card"],
             "chat": state["chat"], "links": state["links"]}}
 
     # ---- OpenAI-совместимый шлюз (polza.ai и аналогичные) ----
@@ -502,6 +506,7 @@ class HermesAgent:
                     "response": final_text,
                     "messages": working_messages,
                     "pending_transfer": pending_transfer,
+                    "handoff_card": state["handoff_card"],
                     "chat": chat_messages,
                     "links": links,
                 }
@@ -544,6 +549,7 @@ class HermesAgent:
             "response": final_text,
             "messages": working_messages,
             "pending_transfer": pending_transfer,
+            "handoff_card": state["handoff_card"],
             "chat": chat_messages,
             "links": links,
         }

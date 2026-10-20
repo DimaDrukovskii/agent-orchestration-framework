@@ -2,7 +2,7 @@
 
 ## Setup
 
-> **SQLite (дефолт).** При `STORAGE_BACKEND=sqlite` (`src/services/sqlite_store.py`) таблица `calls` создаётся сама в `data/hermes.db` с теми же колонками, что ниже; SQL ниже нужен только для Supabase. Таблицы `api_clients`, `call_feedback`, `agent_metrics` в SQLite-схему не входят.
+> **SQLite (дефолт).** При `STORAGE_BACKEND=sqlite` (`src/services/sqlite_store.py`) таблицы `calls` и `handoff_cards` создаются сами в `data/hermes.db` с теми же колонками, что ниже; SQL ниже нужен только для Supabase. Таблицы `api_clients`, `call_feedback`, `agent_metrics` в SQLite-схему не входят.
 
 
 Запусти это в Supabase SQL Editor.
@@ -33,6 +33,27 @@ ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
 -- Policy: Allow all for now (для хакатона)
 CREATE POLICY "Allow all" ON public.calls
     FOR ALL USING (TRUE) WITH CHECK (TRUE);
+
+-- Table: handoff_cards — карточка для менеджера, которую агент собирает перед переводом
+-- (инструмент save_handoff_card, src/agent/tools.py). Одна строка на сохранение карточки;
+-- поля, которые абонент не назвал, остаются NULL. Таблица calls не меняется.
+CREATE TABLE public.handoff_cards (
+    id BIGSERIAL PRIMARY KEY,
+    call_id TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    name TEXT,
+    need TEXT NOT NULL,
+    budget TEXT,
+    urgency TEXT,
+    contact_phone TEXT NOT NULL,
+    comment TEXT
+);
+
+CREATE INDEX handoff_cards_call_id_idx ON public.handoff_cards(call_id);
+
+-- В карточке имя и телефон, поэтому политики «Allow all», как у calls, здесь нет:
+-- писать и читать может только ключ service_role (SUPABASE_KEY сервера), он обходит RLS.
+ALTER TABLE public.handoff_cards ENABLE ROW LEVEL SECURITY;
 
 -- Table: call_feedback (опциональная)
 CREATE TABLE public.call_feedback (
@@ -85,6 +106,7 @@ ALTER TABLE public.calls ADD COLUMN client_id BIGINT REFERENCES api_clients(id);
 | Таблица | Колонки | Назначение |
 |---------|---------|-----------|
 | **calls** | call_id, caller_phone, transcript, agent_response, action, department, confidence | Основной лог всех звонков |
+| **handoff_cards** | call_id, created_at, name, need, budget, urgency, contact_phone, comment | Карточка для менеджера при переводе |
 | **call_feedback** | call_id, rating, feedback | Отзывы абонентов (опционально) |
 | **agent_metrics** | date, total_calls, resolved, transferred, escalated, avg_confidence | Ежедневная статистика |
 
@@ -99,6 +121,10 @@ await storage.save_call(
     agent_response="Помогу вам...",
     action="resolve"
 )
+
+# Save handoff card (пустые поля не пишутся)
+await storage.save_handoff_card("twilio_123", {"need": "тариф для семьи", "contact_phone": "+79999999999"})
+cards = await storage.get_handoff_cards("twilio_123")
 
 # Get caller history
 history = await storage.get_caller_history("+79999999999")
