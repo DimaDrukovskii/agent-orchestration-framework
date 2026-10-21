@@ -7,7 +7,7 @@ import json
 import math
 import os
 import glob
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from src.tenant import tenant_dir
 from src.utils import logger, mask_phone
 
@@ -77,6 +77,30 @@ TOOLS_SCHEMA = [
                 "text": {"type": "string", "description": "Готовое сообщение для чата, без markdown"}
             },
             "required": ["text"]
+        }
+    },
+    {
+        "name": "save_handoff_card",
+        "description": (
+            "Сохранить карточку для менеджера перед переводом на него. Вызывай, когда собрала, что "
+            "нужно абоненту, и номер для связи, затем сразу transfer_to_department с той же причиной. "
+            "Поля, которые абонент не назвал или отказался назвать, не передавай. "
+            "Паспортные и платёжные данные сюда не пиши."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Как обращаться к абоненту"},
+                "need": {"type": "string", "description": "Что нужно абоненту, своими словами, коротко"},
+                "budget": {"type": "string", "description": "Бюджет, если назвал"},
+                "urgency": {"type": "string", "description": "Насколько срочно, если сказал"},
+                "contact_phone": {
+                    "type": "string",
+                    "description": "Номер для связи; «номер звонящего», если абоненту удобно по номеру, с которого он звонит",
+                },
+                "comment": {"type": "string", "description": "Что ещё важно знать менеджеру"},
+            },
+            "required": ["need", "contact_phone"]
         }
     }
 ]
@@ -225,6 +249,46 @@ def send_to_chat(text: str) -> Dict[str, Any]:
     return {"action": "chat", "text": text.strip()[:CHAT_MESSAGE_MAX_CHARS], "status": "отправлено в чат"}
 
 
+HANDOFF_FIELDS = ("name", "need", "budget", "urgency", "contact_phone", "comment")
+HANDOFF_REQUIRED = ("need", "contact_phone")
+HANDOFF_FIELD_MAX_CHARS = 500
+CALLER_PHONE_MARK = "номер звонящего"  # модель не видит номер звонящего: подставляет src/services/dialog.py
+
+
+def build_handoff_card(fields: Dict[str, Any]) -> Dict[str, str]:
+    """Только поля карточки, только непустые строки: лишние ключи от модели и пустые значения отбрасываются."""
+    card = {}
+    for key in HANDOFF_FIELDS:
+        value = fields.get(key)
+        text = value.strip() if isinstance(value, str) else ""
+        if text:
+            card[key] = text[:HANDOFF_FIELD_MAX_CHARS]
+    return card
+
+
+def missing_handoff_fields(card: Dict[str, str]) -> List[str]:
+    """Обязательные поля, которых ещё нет: агенту нужно спросить только их."""
+    return [key for key in HANDOFF_REQUIRED if key not in card]
+
+
+def save_handoff_card(
+    name: Optional[str] = None,
+    need: Optional[str] = None,
+    budget: Optional[str] = None,
+    urgency: Optional[str] = None,
+    contact_phone: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Карточка для менеджера. Запись в хранилище с call_id делает src/services/dialog.py."""
+    card = build_handoff_card({"name": name, "need": need, "budget": budget, "urgency": urgency,
+                               "contact_phone": contact_phone, "comment": comment})
+    missing = missing_handoff_fields(card)
+    if missing:
+        return {"error": "карточка не сохранена, не хватает: " + ", ".join(missing)}
+    logger.info(f"save_handoff_card: fields={sorted(card)}")
+    return {"action": "handoff_card", "card": card, "status": "карточка сохранена"}
+
+
 SITE_MAP_PATH = str(tenant_dir() / "site_map.json")
 
 
@@ -272,6 +336,7 @@ TOOL_HANDLERS = {
     "search_knowledge_base": lambda inp: search_knowledge_base(inp["query"]),
     "check_account_status": lambda inp: check_account_status(inp["phone"]),
     "transfer_to_department": lambda inp: transfer_to_department(inp["department"], inp["reason"]),
+    "save_handoff_card": lambda inp: save_handoff_card(**{k: inp.get(k) for k in HANDOFF_FIELDS}),
 }
 
 

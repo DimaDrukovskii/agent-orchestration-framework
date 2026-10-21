@@ -3,7 +3,7 @@ SQLite-бэкенд для сессий (замена Redis) и звонков (
 
 Один файл БД (settings.sqlite_path), только stdlib — ни Docker, ни внешних
 сервисов. Блокирующие вызовы sqlite3 уходят в поток (asyncio.to_thread), чтобы
-не держать event loop. Схема `calls` повторяет docs/website_side_bar/DATABASE_SCHEMA.md.
+не держать event loop. Схемы `calls` и `handoff_cards` повторяют docs/website_side_bar/DATABASE_SCHEMA.md.
 """
 
 import asyncio
@@ -36,7 +36,21 @@ CREATE TABLE IF NOT EXISTS calls (
 );
 CREATE INDEX IF NOT EXISTS calls_caller_phone_idx ON calls(caller_phone);
 CREATE INDEX IF NOT EXISTS calls_created_at_idx ON calls(created_at DESC);
+CREATE TABLE IF NOT EXISTS handoff_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    name TEXT,
+    need TEXT NOT NULL,
+    budget TEXT,
+    urgency TEXT,
+    contact_phone TEXT NOT NULL,
+    comment TEXT
+);
+CREATE INDEX IF NOT EXISTS handoff_cards_call_id_idx ON handoff_cards(call_id);
 """
+
+HANDOFF_COLUMNS = ("name", "need", "budget", "urgency", "contact_phone", "comment")
 
 
 def resolve_path(path: str) -> str:
@@ -172,6 +186,30 @@ class SqliteStorage:
                     "SELECT * FROM calls WHERE caller_phone = ? "
                     "ORDER BY created_at DESC, id DESC LIMIT ?",
                     (caller_phone, limit),
+                ).fetchall()
+                return [dict(r) for r in rows]
+
+        return await asyncio.to_thread(op)
+
+    async def save_handoff_card(self, call_id: str, card: dict) -> dict:
+        """Карточка для менеджера: в запись попадают только колонки карточки, отсутствующие поля — NULL."""
+        def op():
+            with _db(self.path) as conn:
+                cursor = conn.execute(
+                    "INSERT INTO handoff_cards (call_id, name, need, budget, urgency, contact_phone, comment) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (call_id, *(card.get(c) or None for c in HANDOFF_COLUMNS)),
+                )
+                row = conn.execute("SELECT * FROM handoff_cards WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                return dict(row)
+
+        return await asyncio.to_thread(op)
+
+    async def get_handoff_cards(self, call_id: str) -> List[dict]:
+        def op():
+            with _db(self.path) as conn:
+                rows = conn.execute(
+                    "SELECT * FROM handoff_cards WHERE call_id = ? ORDER BY id", (call_id,)
                 ).fetchall()
                 return [dict(r) for r in rows]
 

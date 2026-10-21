@@ -10,6 +10,7 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 from src.agent.hermes_agent import HermesAgent
+from src.agent.tools import CALLER_PHONE_MARK
 from src.config import settings
 from src.services.cache import CacheService
 from src.utils import logger, mask_phone
@@ -139,12 +140,20 @@ async def _notes_for_turn(session_id: str) -> Dict[str, Any]:
     return {"notes": (await _get_notes(session_id))["text"]}
 
 
+def with_caller_phone(card: Dict[str, str], caller_phone: str) -> Dict[str, str]:
+    """«номер звонящего» в карточке -> номер, с которого идёт звонок. Исходная карточка не меняется."""
+    if card.get("contact_phone", "").lower() != CALLER_PHONE_MARK or not caller_phone:
+        return card
+    return {**card, "contact_phone": caller_phone}
+
+
 async def _persist_turn(
     session_id: str,
     caller_phone: str,
     messages: List[Dict[str, Any]],
     agent_response: str,
-    pending_transfer: Optional[Dict[str, Any]]
+    pending_transfer: Optional[Dict[str, Any]],
+    handoff_card: Optional[Dict[str, str]] = None,
 ) -> bool:
     """
     Записать текущее состояние разговора в Supabase (та же таблица `calls`,
@@ -164,6 +173,8 @@ async def _persist_turn(
             agent_response=agent_response,
             action="transfer" if pending_transfer else "in_progress"
         )
+        if handoff_card:
+            await storage.save_handoff_card(session_id, with_caller_phone(handoff_card, caller_phone))
     except Exception as e:
         persisted = False
         logger.error(f"[{session_id}] Hermes persist error: {str(e)}")
@@ -215,6 +226,7 @@ async def run_turn(
         messages=result["messages"],
         agent_response=result["response"],
         pending_transfer=result["pending_transfer"],
+        handoff_card=result.get("handoff_card"),
     )
 
     chat = result.get("chat", [])
@@ -223,6 +235,7 @@ async def run_turn(
     return {
         "response": result["response"],
         "transfer": result["pending_transfer"],
+        "handoff_card": result.get("handoff_card"),
         "chat": chat,
         "links": result.get("links", []),
         "persisted": persisted,
@@ -260,6 +273,7 @@ async def run_turn_stream(
             messages=result["messages"],
             agent_response=result["response"],
             pending_transfer=result["pending_transfer"],
+            handoff_card=result.get("handoff_card"),
         )
         chat = result.get("chat", [])
         await _deliver_chat(session_id, chat)
@@ -267,6 +281,7 @@ async def run_turn_stream(
             "type": "done",
             "response": result["response"],
             "transfer": result["pending_transfer"],
+            "handoff_card": result.get("handoff_card"),
             "chat": chat,
             "links": result.get("links", []),
             "persisted": persisted,
