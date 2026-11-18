@@ -371,3 +371,24 @@ def test_asterisk_accepts_audio_from_authorized_media_channel(fakes, monkeypatch
             if event.get("text"):
                 assert json.loads(event["text"]) == {"command": "FLUSH_MEDIA"}
     assert calls["turns"] == [("asterisk-test-id", "+375290000000", "сколько стоит тариф RED")]
+
+
+@pytest.mark.asyncio
+async def test_failed_tts_transfers_without_calling_failed_provider_again():
+    fallback = "+375292222222"
+    pipeline, log = _pipeline({"response": "Ответ клиенту."}, {})
+    pipeline.phrases["fallback_number"] = fallback
+    attempted = []
+
+    async def broken_stream(text):
+        attempted.append(text)
+        raise OSError("provider disconnected")
+        yield b""
+
+    pipeline.stream_audio = broken_stream
+    session = CallSession("call", "", pipeline)
+    session._pending.append("Сколько стоит монтаж?")
+    await session._respond()
+    assert attempted == ["Ответ клиенту."]
+    assert log["transferred"] == [fallback]
+    assert log["ended"] == 0

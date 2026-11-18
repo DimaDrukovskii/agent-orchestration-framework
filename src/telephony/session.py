@@ -49,6 +49,10 @@ class Pipeline:
     stream_audio: Optional[Callable[[str], AsyncIterator[bytes]]] = None
 
 
+class SpeechPlaybackError(RuntimeError):
+    """Ответ не удалось воспроизвести на линии."""
+
+
 class CallSession:
     def __init__(self, call_sid: str, caller: str, pipeline: Pipeline) -> None:
         self.call_sid = call_sid
@@ -175,6 +179,7 @@ class CallSession:
         filler = asyncio.create_task(self._filler(first_audio))
         turn: Optional[Dict[str, Any]] = None
         failed = False
+        speech_failed = False
         try:
             async with asyncio.timeout(settings.telephony_turn_timeout_seconds):  # потолок ожидания модели
                 async for event in self.p.stream_turn(self.call_sid, self.caller, text):
@@ -193,6 +198,9 @@ class CallSession:
             await player
         except asyncio.CancelledError:
             raise
+        except SpeechPlaybackError as exc:
+            logger.error(f"call tts failed: {type(exc.__cause__).__name__}")
+            speech_failed = True
         except Exception as e:
             logger.error(f"call dialog failed: {type(e).__name__}")
             failed = True
@@ -202,6 +210,9 @@ class CallSession:
                 if not task.done():
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+        if speech_failed:
+            await self._transfer((turn or {}).get("transfer") or {}, announce=False)
+            return
         if failed:
             self._errors += 1
             if self._errors >= MAX_ERRORS_IN_A_ROW:
@@ -225,14 +236,12 @@ class CallSession:
                     await self._play_stream(text, first_audio)
                 else:
                     mulaw = await job
-                    if mulaw:
-                        first_audio.set()
-                        await self._play(mulaw, text)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.error(f"call tts failed: {type(e).__name__}")
-                continue  # одну фразу пропускаем, остальные говорим
+                    if not mulaw:
+                        raise ValueError("Озвучка вернула пустой ответ")
+                    first_audio.set()
+                    await self._play(mulaw, text)
+            except Exception as exc:
+                raise SpeechPlaybackError() from exc
 
     async def _play_stream(self, text: str, first_audio: Optional[asyncio.Event] = None) -> None:
         stream_audio = self.p.stream_audio
@@ -250,7 +259,9 @@ class CallSession:
                         first_audio.set()
                 duration += audio.duration_seconds(chunk)
                 await self._play(chunk)
-        if duration and first_audio is not None:
+        if not duration:
+            raise ValueError("Поток озвучки не содержал аудио")
+        if first_audio is not None:
             self._said.append((text, start, duration))
 
     async def _filler(self, first_audio: asyncio.Event) -> None:
@@ -321,20 +332,24 @@ class CallSession:
         await self._wait_playback()
         await self.p.end_call()
 
-    async def _transfer(self, transfer: Dict[str, Any]) -> None:
+    async def _transfer(self, transfer: Dict[str, Any], *, announce: bool = True) -> None:
         fallback = self.p.phrases.get("fallback_number")
         primary = self._number_for(transfer.get("department")) if transfer else None
         numbers = tuple(dict.fromkeys(n for n in (primary, fallback) if n))
         if numbers:
-            await self._say(self.p.phrases["transfer_prompt"])
-            await self._wait_playback()
+            if announce:
+                await self._say(self.p.phrases["transfer_prompt"])
+                await self._wait_playback()
             for number in numbers:
                 try:
                     if await self.p.transfer_call(number):
                         return
                 except Exception as exc:
                     logger.warning(f"call transfer failed: {type(exc).__name__}")
-        await self._finish(self.p.phrases["transfer_unavailable"])
+        if announce:
+            await self._finish(self.p.phrases["transfer_unavailable"])
+        else:
+            await self.p.end_call()
 
     def _number_for(self, department: Optional[str]) -> Optional[str]:
         numbers = self.p.phrases.get("transfer_numbers") or {}
