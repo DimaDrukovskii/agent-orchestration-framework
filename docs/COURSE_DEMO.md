@@ -169,3 +169,42 @@ Hermes имеет собственную проверку `/health` и ту же
 подключите модель с поддержкой инструментов и контекстом от 64 000
 токенов. У проверенного тега `qwen2.5:3b` Ollama ограничил
 фактическое окно 32 768 токенами даже при большем запрошенном значении.
+
+### Пилот с OpenRouter и ElevenLabs
+
+Для пилота модель, синтез и распознавание настраиваются отдельно.
+Задайте значения в локальном `.env` или в хранилище секретов сервера.
+
+```dotenv
+HERMES_MODEL_BASE_URL=https://openrouter.ai/api/v1
+HERMES_MODEL=<идентификатор модели OpenRouter>
+OPENROUTER_API_KEY=<ключ OpenRouter>
+HERMES_CONTEXT_LENGTH=<окно контекста модели, минимум 64000>
+HERMES_API_KEY=<секрет между приложением и шлюзом Hermes>
+AGENT_API_KEY=<секрет доступа к API приложения>
+TELEPHONY_MODEL_PROFILE=hermes_agent
+TTS_PROVIDER=elevenlabs
+TTS_API_KEY=<ключ ElevenLabs>
+TTS_VOICE_ID=<идентификатор голоса ElevenLabs>
+TTS_MODEL=eleven_flash_v2_5
+POLZA_API_KEY=<ключ распознавания речи>
+```
+
+Выберите в OpenRouter модель с поддержкой вызова инструментов. Ключ
+OpenRouter передаётся контейнеру Hermes. Ключи ElevenLabs и STT нужны
+приложению. Текущая реализация распознавания использует Polza.
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yml --profile hermes up -d --build
+docker compose --env-file .env -f docker/docker-compose.yml --profile hermes ps
+curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8642/health
+```
+
+`/health` подтверждает доступность локального процесса. До включения
+клиентского трафика пройдите сценарии приёмки на тестовой линии. Проверьте
+вызов обоих MCP-инструментов на выбранной модели, реакцию на таймауты
+и исчерпание квоты каждого провайдера, перевод на резервный номер и
+восстановление после перезапуска. Реальный исходящий дозвон через
+оператора требует подключения SIP и проверки его ответов. Текущая
+очередь исходящих проверена с симулятором.

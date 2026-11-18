@@ -4,11 +4,18 @@
 set -euo pipefail
 
 model_url="${HERMES_MODEL_BASE_URL:-https://polza.ai/api/v1}"
-if [ "$model_url" = "https://polza.ai/api/v1" ]; then
-  model_key="${HERMES_MODEL_API_KEY:-${POLZA_API_KEY:?POLZA_API_KEY не задан}}"
-else
-  model_key="${HERMES_MODEL_API_KEY:-local}"
-fi
+case "${model_url%/}" in
+  https://polza.ai/api/v1)
+    model_key="${HERMES_MODEL_API_KEY:-${POLZA_API_KEY:?POLZA_API_KEY не задан}}"
+    ;;
+  https://openrouter.ai/api/v1)
+    model_key="${HERMES_MODEL_API_KEY:-${OPENROUTER_API_KEY:?OPENROUTER_API_KEY не задан}}"
+    : "${HERMES_MODEL:?Для OpenRouter укажите HERMES_MODEL}"
+    ;;
+  *)
+    model_key="${HERMES_MODEL_API_KEY:-local}"
+    ;;
+esac
 : "${API_SERVER_KEY:?API_SERVER_KEY не задан}"
 
 # Hermes включает API-сервер, только если ключ не короче 16 символов
