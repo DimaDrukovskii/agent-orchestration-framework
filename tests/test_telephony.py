@@ -150,6 +150,8 @@ def fakes(monkeypatch):
         calls.setdefault("interrupted", []).append(args)
 
     async def synth(text):
+        if text == "Тариф стоит 1200 рублей.":
+            return b"\x7f" * len(reply_audio["mulaw"])
         return reply_audio["mulaw"]
 
     monkeypatch.setattr(routes, "transcribe_wav", transcribe)
@@ -185,7 +187,9 @@ def test_call_greets_hears_the_caller_and_answers(fakes):
         assert _next(ws, "media")["streamSid"] == "MZ42"  # приветствие
         _media(ws, TONE, 30)
         _media(ws, SILENCE, 40)
-        _next(ws, "media")  # ответ агента
+        # Кадры приветствия могут ещё стоять в очереди WebSocket.
+        while base64.b64decode(_next(ws, "media")["media"]["payload"])[0] != 0x7F:
+            pass
         _media(ws, SILENCE, 2)
     assert calls["turns"] == [("CA42", "+375290000000", "сколько стоит тариф RED")]
     assert calls["stt"] and calls["stt"][0][:4] == b"RIFF"
@@ -264,3 +268,106 @@ def test_transfer_without_number_apologises_and_hangs_up():
     pipeline, log = _pipeline({"response": "Перевожу.", "transfer": {"department": "биллинг", "reason": "x"}}, {})
     asyncio.run(CallSession("CA1", "+375", pipeline)._respond())
     assert log["transferred"] == [] and log["ended"] == 1 and "Передала, свяжутся" in log["said"]
+
+
+@pytest.mark.asyncio
+async def test_streamed_phone_audio_is_sent_before_synthesis_finishes(monkeypatch):
+    sent = asyncio.Event()
+    closed = asyncio.Event()
+    release = asyncio.Event()
+    events = []
+
+    async def chunks(text):
+        try:
+            yield b"\xff" * 8000
+            await release.wait()
+            yield b"\x7f" * 8000
+        finally:
+            closed.set()
+
+    async def send(data):
+        events.append(data)
+        sent.set()
+
+    async def clear():
+        events.append("clear")
+
+    async def mark(*args):
+        events.append("interrupted")
+
+    async def turn(*args):
+        yield {"type": "sentence", "text": "Первый ответ агента."}
+
+    class Socket:
+        async def send_text(self, message):
+            raise AssertionError("Test replaces WebSocket transport")
+
+    monkeypatch.setattr(routes.tts_service, "provider", "elevenlabs")
+    monkeypatch.setattr(routes.tts_service, "stream_elevenlabs_mulaw", chunks)
+    pipeline = routes.build_pipeline(Socket(), asyncio.Lock(), "stream", "call")
+    pipeline.send_audio = send
+    pipeline.clear_audio = clear
+    pipeline.mark_interrupted = mark
+    pipeline.stream_turn = turn
+    session = CallSession("call", "", pipeline)
+    session._pending.append("Сколько стоит монтаж?")
+    session._respond_task = asyncio.create_task(session._respond())
+    try:
+        await asyncio.wait_for(sent.wait(), 1)
+        assert not closed.is_set()
+        assert events == [b"\xff" * 8000]
+        await session._interrupt()
+        assert closed.is_set()
+        assert events[1:] == ["clear", "interrupted"]
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_transfer_tries_configured_fallback_after_primary_fails():
+    primary = "+375291111111"
+    fallback = "+375292222222"
+    pipeline, log = _pipeline({"response": "Соединяю."}, {"default": primary})
+    pipeline.phrases["fallback_number"] = fallback
+
+    async def transfer(number):
+        log["transferred"].append(number)
+        return number == fallback
+
+    pipeline.transfer_call = transfer
+    session = CallSession("call", "", pipeline)
+    await session._transfer({"department": "менеджер"})
+    assert log["transferred"] == [primary, fallback]
+    assert log["ended"] == 0
+
+
+def test_asterisk_accepts_audio_from_authorized_media_channel(fakes, monkeypatch):
+    from fastapi import WebSocketDisconnect
+
+    calls, _ = fakes
+    monkeypatch.setattr(settings, "asterisk_media_password", "local-test")
+    path = "/telephony/asterisk/media"
+    with pytest.raises(WebSocketDisconnect) as rejected:
+        with client.websocket_connect(path):
+            pass
+    assert rejected.value.code == 4401
+
+    credentials = base64.b64encode(b"asterisk:local-test").decode()
+    with client.websocket_connect(path, headers={"Authorization": f"Basic {credentials}"}, subprotocols=["media"]) as ws:
+        assert ws.accepted_subprotocol == "media"
+        ws.send_json({
+            "event": "MEDIA_START", "connection_id": "test-id", "format": "ulaw", "optimal_frame_size": 160,
+            "channel_variables": {"AGENT_CALLER_NUMBER": "+375290000000"},
+        })
+        assert ws.receive_bytes() == b"\xff" * 1600
+        for sample, count in ((TONE, 30), (SILENCE, 40)):
+            for _ in range(count):
+                ws.send_bytes(frame(sample))
+        while True:
+            event = ws.receive()
+            assert event["type"] == "websocket.send"
+            if event.get("bytes") == b"\x7f" * 1600:
+                break
+            if event.get("text"):
+                assert json.loads(event["text"]) == {"command": "FLUSH_MEDIA"}
+    assert calls["turns"] == [("asterisk-test-id", "+375290000000", "сколько стоит тариф RED")]

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings
 
 
@@ -67,10 +69,24 @@ class Settings(BaseSettings):
     storage_backend: str = "sqlite"
     sqlite_path: str = "data/hermes.db"  # относительно корня репо
 
+    # Симулятор исходящих звонков. Рабочее время по Минску.
+    callback_simulator_enabled: bool = False
+    callback_simulator_outcome: Literal["answered", "busy", "no_answer"] = "answered"
+    simulator_use_hermes: bool = False
+    callback_start_hour: int = 9
+    callback_end_hour: int = 20
+    callback_max_attempts: int = 3
+    callback_retry_seconds: int = 300
+
     # Телефония (Twilio Media Streams, src/telephony). Выключена, пока нет TELEPHONY_ENABLED=true.
     # public_base_url — внешний адрес сервера (https://...): из него строится wss-адрес потока и проверяется
     # подпись вебхука; он должен совпадать с адресом, указанным в консоли Twilio.
     telephony_enabled: bool = False
+    asterisk_media_password: str = ""  # Пустое значение выключает WebSocket Asterisk.
+    asterisk_ari_url: str = ""
+    asterisk_ari_username: str = ""
+    asterisk_ari_password: str = ""
+    asterisk_transfer_context: str = ""
     public_base_url: str = ""
     twilio_account_sid: str = ""  # нужны только для перевода звонка на человека (REST)
     twilio_auth_token: str = ""  # подпись вебхука и токен потока; без него звонки не принимаются
@@ -87,7 +103,7 @@ class Settings(BaseSettings):
 
     # С чем сравнивать стоимость минуты на панели аналитики (demo/tools/analytics.html).
     # МТС Exolve, голосовая сессия робота: от 0,02 ₽/с = 1,2 ₽/мин (exolve.ru/products/robots, 2026-10).
-    benchmark_name: str = "МТС Exolve, голосовой робот"
+    benchmark_name: str = "Справочная стоимость голосового сервиса"
     benchmark_rub_per_minute: float = 1.2
 
     # Supabase — только при storage_backend="supabase"
@@ -98,7 +114,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
 
     # Клиент: папка tenants/<tenant>/ (промпт, база знаний, разделы сайта, подписи), см. src/tenant.py
-    tenant: str = "mts"
+    tenant: str = "climateplus"
 
     # Auth — ключ, которым МТС (или локальный скрипт теста) подписывает запросы
     # к /api/hermes/*. Дефолт — только для локального запуска без .env;

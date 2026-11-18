@@ -328,7 +328,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Установка и подключение за несколько минут")
     parser.add_argument("--phone", action="store_true", help="подключить номер Twilio")
     parser.add_argument("--yes", action="store_true", help="без вопросов (ключи из переменных окружения)")
-    parser.add_argument("--tenant", default="mts", help="папка компании в tenants/ (по умолчанию mts)")
+    parser.add_argument("--tenant", default="climateplus", help="папка компании в tenants/ (по умолчанию climateplus)")
     parser.add_argument("--public-url", default="", help="готовый https-адрес сервера для телефона")
     parser.add_argument("--no-start", action="store_true", help="только записать .env, контейнеры не трогать")
     parser.add_argument("--no-smoke", action="store_true", help="не задавать агенту тестовый вопрос")

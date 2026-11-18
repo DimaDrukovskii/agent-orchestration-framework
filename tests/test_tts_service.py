@@ -76,3 +76,38 @@ def test_polza_elevenlabs_params_only_for_elevenlabs_models(polza, monkeypatch):
     monkeypatch.setattr(settings, "tts_model", "elevenlabs/text-to-speech-turbo-2-5")
     _, _, payload = polza.build_polza_request("привет")
     assert payload["stability"] == settings.tts_stability
+
+
+@pytest.mark.asyncio
+async def test_elevenlabs_stream_uses_configured_voice_model_and_phone_codec(monkeypatch):
+    import json
+    from contextlib import aclosing
+
+    import httpx
+
+    for field, value in (("tts_api_key", "fixture-key"), ("tts_voice_id", "fixture-voice"), ("tts_model", "eleven_flash_v2_5")):
+        monkeypatch.setattr(settings, field, value)
+
+    closed = False
+
+    class Audio(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"\xff" * 160
+            pytest.fail("The provider stream was read past the first frame")
+
+        async def aclose(self):
+            nonlocal closed
+            closed = True
+
+    def provider(request):
+        assert request.url.path == "/v1/text-to-speech/fixture-voice/stream"
+        assert request.url.params["output_format"] == "ulaw_8000"
+        assert request.headers["xi-api-key"] == "fixture-key"
+        assert json.loads(request.content)["model_id"] == "eleven_flash_v2_5"
+        return httpx.Response(200, stream=Audio())
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: client_type(transport=httpx.MockTransport(provider), **kw))
+    async with aclosing(TTSService().stream_elevenlabs_mulaw("Добрый день")) as stream:
+        assert await anext(stream) == b"\xff" * 160
+    assert closed

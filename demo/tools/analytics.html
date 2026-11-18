@@ -108,7 +108,7 @@
   const $ = (id) => document.getElementById(id);
   const rub = (v, d = 2) => (v === null || v === undefined ? "—" : Number(v).toFixed(d).replace(".", ",") + " ₽");
   const keyInput = $("apiKey");
-  try { keyInput.value = sessionStorage.getItem("mts_api_key") || ""; } catch (e) {}
+  try { keyInput.value = sessionStorage.getItem("voice_agent_api_key") || ""; } catch (e) {}
 
   function kpi(label, value, hint) {
     const card = document.createElement("div");
@@ -180,7 +180,7 @@
   async function load() {
     const msg = $("msg"); msg.textContent = "";
     const key = keyInput.value.trim();
-    try { sessionStorage.setItem("mts_api_key", key); } catch (e) {}
+    try { sessionStorage.setItem("voice_agent_api_key", key); } catch (e) {}
     try {
       const response = await fetch("/api/analytics/summary?days=" + $("days").value, { headers: { "X-API-Key": key } });
       if (response.status === 401) { msg.textContent = "Неверный API-ключ."; return; }

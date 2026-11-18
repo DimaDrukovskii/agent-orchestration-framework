@@ -19,6 +19,7 @@
 import asyncio
 import time
 from array import array
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -45,6 +46,7 @@ class Pipeline:
     end_call: Callable[[], Awaitable[None]]  # положить трубку
     transfer_call: Callable[[str], Awaitable[bool]]  # перевести на номер; False = не вышло
     phrases: Dict[str, Any]  # tenants/<имя>/telephony.json
+    stream_audio: Optional[Callable[[str], AsyncIterator[bytes]]] = None
 
 
 class CallSession:
@@ -129,12 +131,12 @@ class CallSession:
     async def _interrupt(self) -> None:
         """Абонент перебил: оборвать озвучку и ответ, записать в историю только услышанное."""
         heard = self._heard(time.monotonic())
-        self._playback_end = 0.0
-        await self.p.clear_audio()
         task = self._respond_task
         if task and not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        self._playback_end = 0.0
+        await self.p.clear_audio()
         if self._turn_text:
             await self.p.mark_interrupted(self.call_sid, self.caller, self._turn_text, heard, self._turn_committed)
             if heard or self._turn_committed:
@@ -177,9 +179,12 @@ class CallSession:
             async with asyncio.timeout(settings.telephony_turn_timeout_seconds):  # потолок ожидания модели
                 async for event in self.p.stream_turn(self.call_sid, self.caller, text):
                     if event["type"] == "sentence":
-                        job = asyncio.create_task(self.p.synthesize(event["text"]))
-                        jobs.append(job)
-                        speech.put_nowait((event["text"], job))
+                        phrase = event["text"]
+                        job = None
+                        if self.p.stream_audio is None:
+                            job = asyncio.create_task(self.p.synthesize(phrase))
+                            jobs.append(job)
+                        speech.put_nowait((phrase, job))
                     elif event["type"] == "done":
                         turn = event
                         self._pending.clear()  # ход сохранён в историю: эти реплики больше не нужны
@@ -192,13 +197,15 @@ class CallSession:
             logger.error(f"call dialog failed: {type(e).__name__}")
             failed = True
         finally:
-            for task in [filler, player, *jobs]:
+            tasks = [filler, player, *jobs]
+            for task in tasks:
                 if not task.done():
                     task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
         if failed:
             self._errors += 1
             if self._errors >= MAX_ERRORS_IN_A_ROW:
-                await self._finish(self.p.phrases["transfer_unavailable"])
+                await self._transfer({})
             else:
                 await self._say(self.p.phrases["error_prompt"])
             return
@@ -214,14 +221,37 @@ class CallSession:
                 return
             text, job = item
             try:
-                mulaw = await job
+                if job is None:
+                    await self._play_stream(text, first_audio)
+                else:
+                    mulaw = await job
+                    if mulaw:
+                        first_audio.set()
+                        await self._play(mulaw, text)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.error(f"call tts failed: {type(e).__name__}")
                 continue  # одну фразу пропускаем, остальные говорим
-            first_audio.set()
-            await self._play(mulaw, text)
+
+    async def _play_stream(self, text: str, first_audio: Optional[asyncio.Event] = None) -> None:
+        stream_audio = self.p.stream_audio
+        assert stream_audio is not None
+        start = 0.0
+        duration = 0.0
+        # The adapter owns the HTTP response until playback completes or is cancelled.
+        async with aclosing(stream_audio(text)) as chunks:
+            async for chunk in chunks:
+                if not chunk:
+                    continue
+                if not duration:
+                    start = max(self._playback_end, time.monotonic())
+                    if first_audio is not None:
+                        first_audio.set()
+                duration += audio.duration_seconds(chunk)
+                await self._play(chunk)
+        if duration and first_audio is not None:
+            self._said.append((text, start, duration))
 
     async def _filler(self, first_audio: asyncio.Event) -> None:
         """Агент думает слишком долго: сказать «угу, секунду», а если и дальше тихо, «ещё секунду», как человек."""
@@ -250,11 +280,15 @@ class CallSession:
     async def _say(self, text: str) -> None:
         """Озвучить текст: все фразы синтезируются параллельно, уходят абоненту по порядку."""
         phrases = audio.split_sentences(text)
-        jobs = [asyncio.create_task(self.p.synthesize(phrase)) for phrase in phrases]
+        jobs = []
         try:
-            for job in jobs:
-                mulaw = await job
-                await self._play(mulaw)
+            if self.p.stream_audio is not None:
+                for phrase in phrases:
+                    await self._play_stream(phrase)
+            else:
+                jobs = [asyncio.create_task(self.p.synthesize(phrase)) for phrase in phrases]
+                for job in jobs:
+                    await self._play(await job)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -288,12 +322,18 @@ class CallSession:
         await self.p.end_call()
 
     async def _transfer(self, transfer: Dict[str, Any]) -> None:
-        number = self._number_for(transfer.get("department"))
-        if number:
+        fallback = self.p.phrases.get("fallback_number")
+        primary = self._number_for(transfer.get("department")) if transfer else None
+        numbers = tuple(dict.fromkeys(n for n in (primary, fallback) if n))
+        if numbers:
             await self._say(self.p.phrases["transfer_prompt"])
             await self._wait_playback()
-            if await self.p.transfer_call(number):
-                return
+            for number in numbers:
+                try:
+                    if await self.p.transfer_call(number):
+                        return
+                except Exception as exc:
+                    logger.warning(f"call transfer failed: {type(exc).__name__}")
         await self._finish(self.p.phrases["transfer_unavailable"])
 
     def _number_for(self, department: Optional[str]) -> Optional[str]:

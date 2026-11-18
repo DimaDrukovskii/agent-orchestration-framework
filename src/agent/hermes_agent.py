@@ -14,7 +14,7 @@ import re
 from typing import List, Dict, Any, AsyncGenerator, Optional, Tuple
 from src.config import settings
 from src.services.analytics import analytics
-from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, kb_context, load_site_map, open_section_tool
+from src.agent.tools import TOOLS_SCHEMA, TOOLS_SCHEMA_OPENAI, execute_tool, tool_enabled, kb_context, load_site_map, open_section_tool
 from src.agent.escalation import escalation_intent
 from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_INTERRUPT_RULE, HERMES_LINKS_RULE, HERMES_SYSTEM_PROMPT
 from src.utils import logger, mask_phone
@@ -130,7 +130,7 @@ def new_turn_state() -> Dict[str, Any]:
 
 def apply_tool(name: str, tool_input: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
     """Выполнить инструмент и учесть его побочный результат (перевод, чат, ссылка) в состоянии реплики."""
-    logger.info(f"Tool call: {name}({tool_input})")
+    logger.info(f"Tool call: {name}")
     result = execute_tool(name, tool_input)
     if name == "transfer_to_department":
         state["pending_transfer"] = result
@@ -262,7 +262,7 @@ class HermesAgent:
                 max_tokens=600,
                 temperature=settings.llm_temperature,
                 system=HERMES_SYSTEM_PROMPT,
-                tools=[t for t in TOOLS_SCHEMA if settings.chat_enabled or t["name"] != "send_to_chat"],
+                tools=[t for t in TOOLS_SCHEMA if tool_enabled(t["name"])],
                 messages=working_messages
             )
 
@@ -359,7 +359,7 @@ class HermesAgent:
             snippet = kb_context(recent_user_text(working))
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
-                 and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
+                 and tool_enabled(t["function"]["name"])]
         tools += open_section_tool()
 
         for iteration in range(MAX_TOOL_ITERATIONS):
@@ -477,7 +477,7 @@ class HermesAgent:
             snippet = kb_context(recent_user_text(working_messages))
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
-                 and (settings.chat_enabled or t["function"]["name"] != "send_to_chat")]
+                 and tool_enabled(t["function"]["name"])]
         tools += open_section_tool()
 
         for iteration in range(MAX_TOOL_ITERATIONS):

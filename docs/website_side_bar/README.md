@@ -26,11 +26,11 @@
   // виджет сообщает свой размер (плашка или раскрытая панель), iframe подгоняется под него
   addEventListener("message", (e) => {
     const f = document.getElementById("agentFrame");
-    if (e.source !== f.contentWindow || !e.data || e.data.type !== "mts-agent-size") return;
+    if (e.source !== f.contentWindow || !e.data || e.data.type !== "voice-agent-size") return;
     f.style.width = Math.min(+e.data.width, innerWidth) + "px";
     f.style.height = Math.min(+e.data.height, innerHeight) + "px";
   });
-  // открыть панель кнопкой на странице: frame.contentWindow.postMessage({type: "mts-agent-open"}, "*")
+  // открыть панель кнопкой на странице: frame.contentWindow.postMessage({type: "voice-agent-open"}, "*")
 </script>
 ```
 

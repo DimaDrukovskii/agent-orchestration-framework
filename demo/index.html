@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>МТС AI-Agent</title>
+    <title>КлиматПлюс</title>
     <style>
       * {
         margin: 0;
@@ -348,13 +348,13 @@
             <span>›</span>
             <a href="#">Бизнесу</a>
             <span>›</span>
-            <a href="#">Тарифы и услуги</a>
+            <a href="#">Услуги</a>
             <span>›</span>
-            <a href="#">Фиксированная телефония и интернет</a>
+            <a href="/demo/phone.html">Симулятор звонка</a>
             <span>›</span>
-            <a href="#">Интернет-решения</a>
+            <a href="/demo/phone.html">Карточка обращения</a>
             <span>›</span>
-            <span>МТС AI-Agent</span>
+            <span>КлиматПлюс</span>
           </div>
           <div class="header-actions">
             <div class="search">
@@ -381,12 +381,12 @@
     <section class="hero">
       <div class="container">
         <div class="hero-content">
-          <h1>МТС AI-AGENT</h1>
+          <h1>КЛИМАТПЛЮС</h1>
           <p>
             Удобный и быстрый ии-агент, который легко поможет распознать слова
             из разговора и зафиксировать договоренности.
           </p>
-          <button class="btn-primary" onclick="openAgent()">Позвонить Алине</button>
+          <button class="btn-primary" onclick="openAgent()">Позвонить Вере</button>
         </div>
       </div>
     </section>
@@ -394,7 +394,7 @@
     <!-- Features Section -->
     <section class="features">
       <div class="container">
-        <h2>РЕШАЙТЕ ЗАДАЧИ БЫСТРЕЕ<br />С МТС AI-AGENT</h2>
+        <h2>РЕШАЙТЕ ЗАДАЧИ БЫСТРЕЕ<br />С КЛИМАТПЛЮС</h2>
         <div class="features-grid">
           <div class="feature-card">
             <div class="feature-icon">
@@ -522,7 +522,7 @@
       <div class="container">
         <div class="cta-content">
           <h2>Попробовать бесплатно</h2>
-          <button class="btn-cta" onclick="openAgent()">Позвонить Алине</button>
+          <button class="btn-cta" onclick="openAgent()">Позвонить Вере</button>
         </div>
       </div>
     </section>
@@ -532,12 +532,9 @@
       <div class="container">
         <div class="footer-content">
           <div class="footer-info">
-            <h3>МТС - связь и цифровые решения</h3>
+            <h3>КлиматПлюс</h3>
             <p>
-              Актуальные новости об услугах на базе мобильных и фиксированных
-              сетей, цифровых сервисах и приложениях, ТВ и медиа, финансовых
-              сервисах и в сфере больших данных, облачных решениях и других
-              сервисах компаний.
+              Демонстрационная компания по установке и обслуживанию кондиционеров.
             </p>
           </div>
           <div class="footer-social">
@@ -605,7 +602,7 @@
     </footer>
 
     <!-- Агент: голосовой виджет (iframe; для любого сайта достаточно этой одной строки) -->
-    <iframe class="agent-frame" id="agentFrame" src="/demo/call.html?embed=1" title="Алина · МТС" allow="microphone; autoplay"></iframe>
+    <iframe class="agent-frame" id="agentFrame" src="/demo/call.html?embed=1" title="Вера · КлиматПлюс" allow="microphone; autoplay"></iframe>
 
 
     <script>
@@ -613,13 +610,13 @@
       const agentFrame = document.getElementById("agentFrame");
 
       function openAgent() {
-        agentFrame.contentWindow.postMessage({ type: "mts-agent-open" }, "*");
+        agentFrame.contentWindow.postMessage({ type: "voice-agent-open" }, "*");
       }
 
       // виджет сам сообщает свой размер (лаунчер или раскрытая карточка), iframe подгоняется под него
       window.addEventListener("message", (event) => {
         const data = event.data;
-        if (event.source !== agentFrame.contentWindow || !data || data.type !== "mts-agent-size") return;
+        if (event.source !== agentFrame.contentWindow || !data || data.type !== "voice-agent-size") return;
         agentFrame.style.width = Math.min(Number(data.width) || 0, window.innerWidth) + "px";
         agentFrame.style.height = Math.min(Number(data.height) || 0, window.innerHeight) + "px";
       });

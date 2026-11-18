@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Звонок · МТС AI-Agent</title>
+    <title>Звонок · КлиматПлюс</title>
     <style>
       :root {
         --color-page: #f6f5f3;
@@ -712,13 +712,13 @@
         <span class="orb" aria-hidden="true">
           <i class="blob"></i><i class="blob"></i><i class="blob"></i><i class="blob"></i>
         </span>
-        <span id="launcherText">Поговорить с Алиной</span>
+        <span id="launcherText">Поговорить с Верой</span>
       </button>
 
-      <section class="card" role="dialog" aria-label="Звонок агенту МТС">
+      <section class="card" role="dialog" aria-label="Звонок голосовому помощнику">
         <header class="card-head">
           <div>
-            <div class="who-name" id="whoName">Алина · МТС</div>
+            <div class="who-name" id="whoName">Вера · КлиматПлюс</div>
             <div class="who-sub" id="whoSub">ИИ-ассистент поддержки</div>
           </div>
           <div class="head-actions">
@@ -754,7 +754,7 @@
         </div>
 
         <div class="chat" id="chat" role="log" aria-live="polite" aria-label="Диалог">
-          <div class="chat-msg from-agent" id="welcomeMsg">Здравствуйте! Я Алина, ИИ-ассистент МТС. Спросите про тарифы, услуги или роуминг: голосом или текстом.</div>
+          <div class="chat-msg from-agent" id="welcomeMsg">Здравствуйте! Я Вера из «КлиматПлюс». Спросите про установку или обслуживание: голосом или текстом.</div>
         </div>
 
         <div class="notice" id="notice" hidden></div>
@@ -850,8 +850,9 @@
       const LEVEL_SMOOTHING = 0.35;
       const LEVEL_GAIN = 4;
       // подписи по умолчанию; настоящие приходят с сервера (GET /api/tenant, файл tenants/<клиент>/tenant.json)
-      let GREETING = "Здравствуйте, менеджер Алина от компании МТС, слушаю.";
-      let LAUNCHER_TEXT = "Поговорить с Алиной";
+      let agentName = "Вера";
+      let GREETING = "Здравствуйте! Это Вера, голосовой помощник «КлиматПлюс». Чем могу помочь?";
+      let LAUNCHER_TEXT = "Поговорить с Верой";
       // ошибки ключа повторять бессмысленно: сразу объясняем, а не «связь пропала» три раза
       const FATAL_AGENT_ERRORS = {
         model_not_allowed: "Модель агента не разрешена на ключе Polza (403). Разрешите её в настройках ключа и позвоните снова.",
@@ -889,7 +890,7 @@
         connecting: "Соединяем…",
         listening: "Слушаю вас",
         thinking: "Думаю…",
-        speaking: "Говорит Алина",
+        speaking: "Говорит ассистент",
         ended: "Звонок завершён",
       };
 
@@ -898,10 +899,10 @@
       const widgetSessionId = newSessionId(); // один разговор: текст и голос продолжают друг друга
       let recognition = null;
       let voices = [];
-      let selectedVoiceURI = storeGet("mts_call_voice");
+      let selectedVoiceURI = storeGet("voice_agent_call_voice");
       let serverVoiceAvailable = false;
       const MODEL_PROFILES = ["default", "local"];
-      let modelProfile = MODEL_PROFILES.includes(storeGet("mts_model_profile")) ? storeGet("mts_model_profile") : "default";
+      let modelProfile = MODEL_PROFILES.includes(storeGet("voice_agent_model_profile")) ? storeGet("voice_agent_model_profile") : "default";
 
       // --- хранилище (может быть недоступно) ------------------------------
       function storeGet(key) {
@@ -918,9 +919,9 @@
         } catch (e) {}
       }
 
-      keyInput.value = storeGet("mts_api_key") || DEFAULT_API_KEY;
+      keyInput.value = storeGet("voice_agent_api_key") || DEFAULT_API_KEY;
       keyInput.addEventListener("change", () => {
-        storeSet("mts_api_key", keyInput.value.trim());
+        storeSet("voice_agent_api_key", keyInput.value.trim());
         loadTenant();
         checkServerVoice();
         checkModels();
@@ -963,6 +964,7 @@
           const response = await fetch("/api/tenant", { headers: apiHeaders(), signal: controller.signal });
           if (!response.ok) return;
           const t = await response.json();
+          agentName = t.agent_name;
           const name = t.company ? t.agent_name + " · " + t.company : t.agent_name;
           $("whoName").textContent = name;
           $("whoSub").textContent = t.subtitle;
@@ -1085,7 +1087,7 @@
 
       modelSelect.addEventListener("change", () => {
         modelProfile = MODEL_PROFILES.includes(modelSelect.value) ? modelSelect.value : "default";
-        storeSet("mts_model_profile", modelProfile);
+        storeSet("voice_agent_model_profile", modelProfile);
       });
 
       // --- резервные голоса браузера --------------------------------------
@@ -1124,7 +1126,7 @@
 
       voiceSelect.addEventListener("change", () => {
         selectedVoiceURI = voiceSelect.value;
-        storeSet("mts_call_voice", selectedVoiceURI);
+        storeSet("voice_agent_call_voice", selectedVoiceURI);
       });
 
       if (synth) {
@@ -1630,7 +1632,7 @@
         const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         const spoken = activeCall.uncertain ? UNCERTAIN_MARK + text : text;
         activeCall.uncertain = false;
-        storeSet("mts_api_key", keyInput.value.trim());
+        storeSet("voice_agent_api_key", keyInput.value.trim());
         try {
           const response = await fetch(API_URL, {
             method: "POST",
@@ -1680,7 +1682,7 @@
         addMessage("agent", result.reply);
         (result.chat || []).forEach((extra) => addMessage("agent", extra));
         addLinks(result.links || []);
-        showCaption("Алина", result.reply);
+        showCaption(agentName, result.reply);
         setPhase("speaking");
         await speak(activeCall, result.reply, { interruptible: !result.transfer });
         if (!isActive(activeCall)) return;
@@ -1760,7 +1762,7 @@
         }
 
         startTimer(activeCall);
-        showCaption("Алина", GREETING);
+        showCaption(agentName, GREETING);
         setPhase("speaking");
         await speak(activeCall, GREETING);
         if (!isActive(activeCall)) return;
@@ -1834,7 +1836,7 @@
         const text = textInput.value.trim();
         if (!text) return;
         if (call && (call.busy || call.ended)) {
-          showNotice("Алина отвечает, напишите через секунду.");
+          showNotice("Ассистент отвечает, напишите через секунду.");
           setTimeout(() => showNotice(""), 2500);
           return;
         }
@@ -1884,11 +1886,11 @@
       if (EMBED) {
         const reportSize = () => {
           const box = widget.getBoundingClientRect();
-          parent.postMessage({ type: "mts-agent-size", width: Math.ceil(box.width) + 80, height: Math.ceil(box.height) + 80 }, "*");
+          parent.postMessage({ type: "voice-agent-size", width: Math.ceil(box.width) + 80, height: Math.ceil(box.height) + 80 }, "*");
         };
         new ResizeObserver(reportSize).observe(widget);
         window.addEventListener("message", (event) => {
-          if (event.source === parent && event.data && event.data.type === "mts-agent-open") setOpen(true);
+          if (event.source === parent && event.data && event.data.type === "voice-agent-open") setOpen(true);
         });
         reportSize();
       }

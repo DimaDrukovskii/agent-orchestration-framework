@@ -68,7 +68,7 @@
     </div>
 
     <script>
-      document.getElementById("sessionId").value = sessionStorage.getItem("mts_last_session_id") || "";
+      document.getElementById("sessionId").value = sessionStorage.getItem("voice_agent_last_session_id") || "";
 
       function textFromContent(content) {
         if (typeof content === "string") return content;
@@ -83,7 +83,7 @@
 
       async function loadHistory() {
         const sessionId = document.getElementById("sessionId").value.trim();
-        const apiKey = sessionStorage.getItem("mts_api_key") || "";
+        const apiKey = sessionStorage.getItem("voice_agent_api_key") || "";
         const statusEl = document.getElementById("status");
         const listEl = document.getElementById("messages");
         statusEl.textContent = "";

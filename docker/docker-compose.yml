@@ -1,8 +1,16 @@
 services:
   app:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        TENANT: ${TENANT:-climateplus}
     ports:
       - "8000:8000"
     dns:
@@ -36,25 +44,44 @@ services:
       - REDIS_URL=redis://redis:6379
       - HERMES_AGENT_BASE_URL=${HERMES_AGENT_BASE_URL:-http://hermes:8642/v1}
       - HERMES_AGENT_API_KEY=${HERMES_API_KEY:-local-hermes-key-change-me-2026}
+      - ASTERISK_MEDIA_PASSWORD=${ASTERISK_MEDIA_PASSWORD:-}
+      - ASTERISK_ARI_URL=${ASTERISK_ARI_URL:-}
+      - ASTERISK_ARI_USERNAME=${ASTERISK_ARI_USERNAME:-}
+      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD:-}
+      - ASTERISK_TRANSFER_CONTEXT=${ASTERISK_TRANSFER_CONTEXT:-}
+      - TELEPHONY_MODEL_PROFILE=${TELEPHONY_MODEL_PROFILE:-default}
       - TELEPHONY_ENABLED=${TELEPHONY_ENABLED:-false}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
-      - TENANT=${TENANT:-mts}
+      - SIMULATOR_USE_HERMES=${SIMULATOR_USE_HERMES:-false}
+      - CALLBACK_SIMULATOR_ENABLED=${CALLBACK_SIMULATOR_ENABLED:-false}
+      - CALLBACK_SIMULATOR_OUTCOME=${CALLBACK_SIMULATOR_OUTCOME:-answered}
+      - CALLBACK_START_HOUR=${CALLBACK_START_HOUR:-9}
+      - CALLBACK_END_HOUR=${CALLBACK_END_HOUR:-20}
+      - CALLBACK_MAX_ATTEMPTS=${CALLBACK_MAX_ATTEMPTS:-3}
+      - CALLBACK_RETRY_SECONDS=${CALLBACK_RETRY_SECONDS:-300}
+      - TENANT=${TENANT:-climateplus}
     depends_on:
       - redis
     volumes:
       - ../src:/app/src
       - ../demo:/app/demo
       - ../data:/app/data
-      - ../tenants:/app/tenants
-    command: uvicorn src.main:app --host 0.0.0.0 --reload
+      - ../tenants/${TENANT:-climateplus}:/app/tenants/${TENANT:-climateplus}:ro
 
   # Hermes Agent (Nous Research) как «мозг» звонка: профиль model_profile="hermes_agent". Не запускается
   # по умолчанию: docker compose --profile hermes up -d. Порт только на localhost хоста: агент умеет
   # выполнять команды внутри своего контейнера, наружу его выставлять нельзя. MCP-инструменты
   # подключаются в его собственном config.yaml (docs/website_side_bar/LLM_CONNECTOR.md).
   hermes:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "3", "http://127.0.0.1:8642/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     profiles: ["hermes"]
     build:
       context: ./hermes
@@ -63,8 +90,17 @@ services:
       - "127.0.0.1:8642:8642"
     environment:
       - POLZA_API_KEY=${POLZA_API_KEY:-}
-      - HERMES_MODEL=${POLZA_MODEL:-anthropic/claude-haiku-5.5}
+      - HERMES_MODEL=${HERMES_MODEL:-${POLZA_MODEL:-anthropic/claude-haiku-5.5}}
+      - HERMES_MODEL_BASE_URL=${HERMES_MODEL_BASE_URL:-https://polza.ai/api/v1}
+      - HERMES_MODEL_API_KEY=${HERMES_MODEL_API_KEY:-}
+      - HERMES_CONTEXT_LENGTH=${HERMES_CONTEXT_LENGTH:-200000}
       - API_SERVER_KEY=${HERMES_API_KEY:-local-hermes-key-change-me-2026}
+      - HERMES_MCP_CONFIG=${HERMES_MCP_CONFIG-/project/appointments.yaml}
+    volumes:
+      - ../src:/project/src:ro
+      - ../tenants/climateplus:/project/tenants/climateplus:ro
+      - ./hermes/appointments.yaml:/project/appointments.yaml:ro
+      - hermes_data:/home/hermes/.hermes
 
   redis:
     image: redis:7-alpine
@@ -74,4 +110,5 @@ services:
       - redis_data:/data
 
 volumes:
+  hermes_data:
   redis_data:

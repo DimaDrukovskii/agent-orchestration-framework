@@ -1,6 +1,9 @@
 import os
 import tempfile
 
+# Сценарии старого профиля явно выбирают тестовую базу знаний.
+os.environ.setdefault("TENANT", "mts")
+
 # Для тестов нужен только ключ-заглушка Anthropic; SQLite-файл — во временной
 # папке, чтобы тесты не трогали data/hermes.db. Ни один тест не ходит в сеть.
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")

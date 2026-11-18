@@ -14,6 +14,8 @@ import time
 from contextlib import contextmanager
 from typing import Iterator, List, Optional
 
+SQLITE_TIMEOUT = 10
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 _SCHEMA = """
@@ -59,7 +61,7 @@ def resolve_path(path: str) -> str:
 
 @contextmanager
 def _db(path: str) -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(path, timeout=10)
+    conn = sqlite3.connect(path, timeout=SQLITE_TIMEOUT)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -76,7 +78,19 @@ def init_db(path: str) -> str:
     full_path = resolve_path(path)
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
     with _db(full_path) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+        # Changing the journal mode can return SQLITE_BUSY before the
+        # connection's busy handler runs, when another worker opens a new DB.
+        deadline = time.monotonic() + SQLITE_TIMEOUT
+        while True:
+            try:
+                conn.execute("PRAGMA journal_mode=WAL").fetchone()
+                break
+            except sqlite3.OperationalError as exc:
+                if exc.sqlite_errorcode not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.025)
         conn.executescript(_SCHEMA)
     return full_path
 

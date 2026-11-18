@@ -110,6 +110,10 @@ def build_pipeline(ws: WebSocket, send_lock: asyncio.Lock, stream_sid: str, call
     async def transfer_call(number: str) -> bool:
         return await twilio.update_call(call_sid, twilio.dial_twiml(number))
 
+    return make_pipeline(send_audio, clear_audio, end_call, transfer_call)
+
+
+def make_pipeline(send_audio, clear_audio, end_call, transfer_call) -> Pipeline:
     return Pipeline(
         transcribe=transcribe_wav,
         stream_turn=stream_turn,
@@ -120,6 +124,7 @@ def build_pipeline(ws: WebSocket, send_lock: asyncio.Lock, stream_sid: str, call
         end_call=end_call,
         transfer_call=transfer_call,
         phrases=load_telephony(),
+        stream_audio=tts_service.stream_elevenlabs_mulaw if tts_service.provider == "elevenlabs" else None,
     )
 
 
@@ -163,6 +168,8 @@ async def media_stream(ws: WebSocket):
 
 async def prewarm() -> None:
     """Озвучить приветствие заранее: первый звонок после запуска не ждёт озвучки."""
+    if tts_service.provider == "elevenlabs":
+        return  # Приветствие воспроизводится из потока µ-law.
     try:
         await synthesize_mulaw(load_telephony()["greeting"])
         logger.info("telephony: greeting is warmed up")

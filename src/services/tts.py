@@ -22,7 +22,8 @@ TTSService.synthesize() — единая точка входа независи�
 import asyncio
 import base64
 from collections import OrderedDict
-from typing import Any, Dict, Optional, Tuple
+from contextlib import aclosing
+from typing import Any, AsyncIterator, Dict, Optional, Tuple
 
 from src.config import settings
 from src.services.speech_text import prepare_for_speech
@@ -141,13 +142,23 @@ class TTSService:
         raise last_error
 
     async def _synthesize_elevenlabs(self, text: str) -> bytes:
+        return b"".join([chunk async for chunk in self._elevenlabs_audio(text, "mp3_44100_128")])
+
+    async def stream_elevenlabs_mulaw(self, text: str) -> AsyncIterator[bytes]:
+        """Выдавать телефонные кадры G.711 по мере их получения от провайдера."""
+        text = prepare_for_speech(text, settings.tts_stress_marks)
+        async with aclosing(self._elevenlabs_audio(text, "ulaw_8000")) as chunks:
+            async for chunk in chunks:
+                yield chunk
+
+    async def _elevenlabs_audio(self, text: str, output_format: str) -> AsyncIterator[bytes]:
         import httpx
 
         if not settings.tts_api_key or not settings.tts_voice_id:
             raise TTSNotConfigured("TTS_API_KEY / TTS_VOICE_ID не заданы для elevenlabs")
 
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{settings.tts_voice_id}"
-        headers = {"xi-api-key": settings.tts_api_key, "Content-Type": "application/json"}
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{settings.tts_voice_id}/stream"
+        headers = {"xi-api-key": settings.tts_api_key}
         payload = {
             "text": text,
             "model_id": settings.tts_model or ELEVENLABS_DEFAULT_MODEL,
@@ -156,15 +167,13 @@ class TTSService:
                 "similarity_boost": settings.tts_similarity,
             },
         }
-
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.post(url, headers=headers, json=payload)
+        async with httpx.AsyncClient(timeout=15) as client:
+            async with client.stream(
+                "POST", url, headers=headers, json=payload, params={"output_format": output_format}
+            ) as response:
                 response.raise_for_status()
-                return response.content
-        except Exception as e:
-            logger.error(f"TTS (elevenlabs) error: {str(e)}")
-            raise
+                async for chunk in response.aiter_bytes():
+                    yield chunk
 
 
 tts_service = TTSService()

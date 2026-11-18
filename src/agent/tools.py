@@ -8,6 +8,7 @@ import math
 import os
 import glob
 from typing import List, Dict, Any, Optional
+from src.config import settings
 from src.tenant import tenant_dir
 from src.utils import logger, mask_phone
 
@@ -20,7 +21,7 @@ TOOLS_SCHEMA = [
     {
         "name": "search_knowledge_base",
         "description": (
-            "Поиск информации в базе знаний МТС (тарифы, техподдержка, биллинг). "
+            "Поиск информации в базе знаний компании. "
             "Используй это ПЕРЕД тем, как отвечать на вопрос по существу — "
             "не придумывай цифры и инструкции, бери их отсюда."
         ),
@@ -29,7 +30,7 @@ TOOLS_SCHEMA = [
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Что искать, например 'низкая скорость интернета' или 'тариф XL'"
+                    "description": "Что искать, например 'стоимость услуги' или 'условия гарантии'"
                 }
             },
             "required": ["query"]
@@ -340,8 +341,18 @@ TOOL_HANDLERS = {
 }
 
 
+def tool_enabled(name: str) -> bool:
+    if name == "check_account_status":
+        return settings.tenant == "mts"
+    if name == "send_to_chat":
+        return settings.chat_enabled
+    return True
+
+
 def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
     """Выполнить tool по имени с входными данными от модели."""
+    if tool_name == "check_account_status" and not tool_enabled(tool_name):
+        return {"error": "Инструмент недоступен для этого профиля"}
     handler = TOOL_HANDLERS.get(tool_name)
     if not handler:
         return f"Неизвестный инструмент: {tool_name}"

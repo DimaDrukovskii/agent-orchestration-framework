@@ -1,0 +1,10 @@
+mcp_servers:
+  climateplus:
+    command: /home/hermes/mcp-venv/bin/python
+    args: ["-m", "src.agent.appointments_mcp"]
+    env:
+      PYTHONPATH: /project
+      APPOINTMENTS_DB: /home/hermes/.hermes/appointments.db
+      APPOINTMENTS_PROFILE: /project/tenants/climateplus/appointments.json
+platform_toolsets:
+  api_server: [climateplus]

@@ -11,7 +11,7 @@ client = TestClient(app)
 HEADERS = {"X-API-Key": settings.agent_api_key}
 
 
-def test_default_tenant_is_mts_with_its_own_files():
+def test_mts_tenant_has_its_own_files():
     assert settings.tenant == "mts"
     assert "Алина" in tenant.read_tenant_file("prompt.md")
     assert (tenant.tenant_dir() / "knowledge").is_dir()
@@ -56,3 +56,16 @@ def test_speech_models_are_flagged_as_non_chat():
 
     assert non_chat_model("openai/gpt-4o-transcribe") and non_chat_model("elevenlabs/text-to-speech-multilingual-v2")
     assert not non_chat_model("anthropic/claude-haiku-5.5") and not non_chat_model("google/gemini-3.5-flash-lite")
+
+
+def test_climateplus_profile_supplies_grounded_answers(monkeypatch):
+    from src.agent import tools
+    from src.config import Settings
+
+    assert Settings.model_fields["tenant"].default == "climateplus"
+    monkeypatch.setattr(settings, "tenant", "climateplus")
+    monkeypatch.setattr(tools, "KNOWLEDGE_DIR", str(tenant.tenant_dir() / "knowledge"))
+    assert tenant.load_branding()["company"] == "КлиматПлюс"
+    assert "КлиматПлюс" in tenant.load_telephony()["greeting"]
+    assert "450 BYN" in tools.search_knowledge_base("стандартный монтаж кондиционера")
+    assert not tools.tool_enabled("check_account_status")

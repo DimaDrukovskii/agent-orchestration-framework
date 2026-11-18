@@ -81,8 +81,8 @@
     </div>
 
     <script>
-      document.getElementById("apiKey").value = sessionStorage.getItem("mts_api_key") || "";
-      document.getElementById("webhookUrl").value = sessionStorage.getItem("mts_webhook_url") || "";
+      document.getElementById("apiKey").value = sessionStorage.getItem("voice_agent_api_key") || "";
+      document.getElementById("webhookUrl").value = sessionStorage.getItem("voice_agent_webhook_url") || "";
 
       function showResult(ok, text) {
         const el = document.getElementById("result");
@@ -93,8 +93,8 @@
       async function checkConnection() {
         const apiKey = document.getElementById("apiKey").value.trim();
         const webhookUrl = document.getElementById("webhookUrl").value.trim();
-        sessionStorage.setItem("mts_api_key", apiKey);
-        sessionStorage.setItem("mts_webhook_url", webhookUrl);
+        sessionStorage.setItem("voice_agent_api_key", apiKey);
+        sessionStorage.setItem("voice_agent_webhook_url", webhookUrl);
 
         const btn = document.querySelector("button");
         btn.disabled = true;

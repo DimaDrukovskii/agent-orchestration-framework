@@ -14,8 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ src/
-COPY data/ data/
-COPY tenants/ tenants/
+RUN mkdir -p data
+ARG TENANT=climateplus
+COPY tenants/${TENANT}/ tenants/${TENANT}/
 COPY demo/ demo/
 
 # Переменные окружения приходят из docker-compose `environment:` (или -e при
