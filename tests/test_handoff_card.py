@@ -86,6 +86,14 @@ def test_card_saved_and_read_back(tmp_path):
     assert run(storage.get_handoff_cards("other")) == []
 
 
+def test_repeated_handoff_replaces_card_for_same_call(tmp_path):
+    storage = SqliteStorage(str(tmp_path / "t.db"))
+    first = run(storage.save_handoff_card("call-1", {"need": "монтаж", "contact_phone": "+375"}))
+    second = run(storage.save_handoff_card("call-1", {"need": "чистка", "contact_phone": "+375"}))
+    assert first["id"] == second["id"]
+    assert [row["need"] for row in run(storage.get_handoff_cards("call-1"))] == ["чистка"]
+
+
 def test_stored_row_has_only_card_columns_and_null_for_skipped(tmp_path):
     storage = SqliteStorage(str(tmp_path / "t.db"))
     row = run(storage.save_handoff_card("call-1", {"need": "тариф", "contact_phone": "+7", "budget": "", "passport": "x"}))

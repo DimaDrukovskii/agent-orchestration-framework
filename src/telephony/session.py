@@ -248,6 +248,7 @@ class CallSession:
         assert stream_audio is not None
         start = 0.0
         duration = 0.0
+        said_index: Optional[int] = None
         # The adapter owns the HTTP response until playback completes or is cancelled.
         async with aclosing(stream_audio(text)) as chunks:
             async for chunk in chunks:
@@ -259,10 +260,14 @@ class CallSession:
                         first_audio.set()
                 duration += audio.duration_seconds(chunk)
                 await self._play(chunk)
+                if first_audio is not None:
+                    if said_index is None:
+                        said_index = len(self._said)
+                        self._said.append((text, start, duration))
+                    else:
+                        self._said[said_index] = (text, start, duration)
         if not duration:
             raise ValueError("Поток озвучки не содержал аудио")
-        if first_audio is not None:
-            self._said.append((text, start, duration))
 
     async def _filler(self, first_audio: asyncio.Event) -> None:
         """Агент думает слишком долго: сказать «угу, секунду», а если и дальше тихо, «ещё секунду», как человек."""

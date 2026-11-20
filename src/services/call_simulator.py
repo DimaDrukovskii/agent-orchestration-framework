@@ -12,7 +12,7 @@ from src.tenant import load_branding, load_telephony, read_tenant_file, tenant_d
 
 _FIELDS = {
     "need": r"(?:нужен|нужна|нужно|интересует)\s+(?!(?:через|согласовать)\b)([^.!?,;]+)",
-    "budget_byn": r"бюджет(?:\s+до)?\s*[:—-]?\s*(\d+)",
+    "budget_byn": r"бюджет(?:\s+до)?\s*[:—-]?\s*(\d[\d\s\u00a0]*\d|\d)",
     "days": r"(?:через|в течение)\s+(\d+)\s*(?:дн|сут)",
 }
 _QUESTIONS = {
@@ -122,7 +122,7 @@ class CallSimulator:
                     state["status"] = "transferred"
                     state["card"] = self._card(state)
             else:
-                answer = self._answer(state["facts"], text)
+                answer = self._answer(state["facts"], text, call_id)
             state["history"].append({"role": "assistant", "text": answer})
             self._save(conn, state)
             return state
@@ -144,13 +144,14 @@ class CallSimulator:
         for key, regex in _FIELDS.items():
             matches = re.findall(regex, text, re.IGNORECASE)
             if matches:
-                facts[key] = matches[-1].strip() if key == "need" else int(matches[-1])
+                facts[key] = (matches[-1].strip() if key == "need"
+                              else int(re.sub(r"\s", "", matches[-1])))
         if re.search(r"(?:сам[а]? согласую|я принимаю решение)", text, re.IGNORECASE):
             facts["authority"] = "самостоятельно"
         elif re.search(r"(?:надо согласовать|нужно согласовать|решает руководитель)", text, re.IGNORECASE):
             facts["authority"] = "нужно согласование"
 
-    def _answer(self, facts: dict, text: str) -> str:
+    def _answer(self, facts: dict, text: str, call_id: str) -> str:
         lower = text.lower()
         if self.appointments:
             slot = re.search(r"запишите на (\d{4}-\d{2}-\d{2})[t ](\d{2}:\d{2})", lower)
@@ -159,7 +160,7 @@ class CallSimulator:
                 if not need:
                     return _QUESTIONS["need"]
                 try:
-                    appointment = self.appointments.create("T".join(slot.groups()), need)
+                    appointment = self.appointments.create("T".join(slot.groups()), need, request_id=call_id)
                 except ValueError as exc:
                     return str(exc)
                 facts["appointment"] = appointment

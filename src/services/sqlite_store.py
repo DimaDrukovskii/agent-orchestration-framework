@@ -92,6 +92,8 @@ def init_db(path: str) -> str:
                     raise
                 time.sleep(0.025)
         conn.executescript(_SCHEMA)
+        conn.execute("DELETE FROM handoff_cards WHERE id NOT IN (SELECT MAX(id) FROM handoff_cards GROUP BY call_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS handoff_cards_one_per_call_idx ON handoff_cards(call_id)")
     return full_path
 
 
@@ -209,12 +211,15 @@ class SqliteStorage:
         """Карточка для менеджера: в запись попадают только колонки карточки, отсутствующие поля — NULL."""
         def op():
             with _db(self.path) as conn:
-                cursor = conn.execute(
+                conn.execute(
                     "INSERT INTO handoff_cards (call_id, name, need, budget, urgency, contact_phone, comment) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(call_id) DO UPDATE SET "
+                    "name = excluded.name, need = excluded.need, budget = excluded.budget, "
+                    "urgency = excluded.urgency, contact_phone = excluded.contact_phone, comment = excluded.comment",
                     (call_id, *(card.get(c) or None for c in HANDOFF_COLUMNS)),
                 )
-                row = conn.execute("SELECT * FROM handoff_cards WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                row = conn.execute("SELECT * FROM handoff_cards WHERE call_id = ?", (call_id,)).fetchone()
                 return dict(row)
 
         return await asyncio.to_thread(op)

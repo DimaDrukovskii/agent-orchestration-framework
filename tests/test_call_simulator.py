@@ -1,5 +1,6 @@
 import re
 import time
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -7,6 +8,8 @@ from src.agent import tools
 from src.config import settings
 from src.main import app
 from src.tenant import tenant_dir
+from src.services.appointments import AppointmentBook
+from src.services.call_simulator import CallSimulator
 
 
 def test_incoming_card_and_callback_continue_with_saved_context(tmp_path, monkeypatch):
@@ -111,3 +114,23 @@ def test_simulator_hermes_profile_uses_current_history_and_handles_handoff(tmp_p
     assert transferred["status"] == "transferred"
     assert transferred["card"]["budget_byn"] == 800
     assert create.await_count == 2
+
+
+def test_budget_with_thousands_separator_is_classified_correctly(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "tenant", "climateplus")
+    simulator = CallSimulator(str(tmp_path / "calls.db"))
+    call = simulator.start()
+    simulator.turn(call["call_id"], "Нужен монтаж. Бюджет 1 500 рублей. Через 3 дня, я сам согласую.", None)
+    final = simulator.finish(call["call_id"])
+    assert final["card"]["budget_byn"] == 1500
+    assert final["card"]["category"] == "HOT"
+
+
+def test_same_slot_cannot_be_given_to_another_caller(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "tenant", "climateplus")
+    book = AppointmentBook(str(tmp_path / "appointments.db"), str(tenant_dir() / "appointments.json"))
+    slot = book.available()[0]
+    first = book.create(slot, "монтаж", request_id="call-a")
+    assert book.create(slot, "монтаж", request_id="call-a") == first
+    with pytest.raises(ValueError, match="занято"):
+        book.create(slot, "монтаж", request_id="call-b")

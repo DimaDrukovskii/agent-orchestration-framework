@@ -11,3 +11,8 @@ os.environ.setdefault("SQLITE_PATH", os.path.join(tempfile.mkdtemp(prefix="herme
 
 # Установщик (scripts/setup.py) пишет в .env случайный AGENT_API_KEY: тесты ждут стандартный и от личного .env не зависят.
 os.environ["AGENT_API_KEY"] = "test-local-key"
+# Личный .env может содержать платные провайдеры; тесты всегда используют заглушки.
+os.environ["LLM_PROVIDER"] = "anthropic"
+os.environ["TTS_PROVIDER"] = "none"
+os.environ["TELEPHONY_ENABLED"] = "false"
+os.environ["CALLBACK_SIMULATOR_ENABLED"] = "false"

@@ -16,9 +16,9 @@ def create_server(book: AppointmentBook) -> FastMCP:
         return book.available()
 
     @server.tool()
-    def create_request(slot: str, need: str) -> dict:
-        """По согласию абонента создать заявку на выбранное окно. Используй точный слот из available_slots."""
-        return book.create(slot, need)
+    def create_request(slot: str, need: str, request_id: str = "") -> dict:
+        """По согласию абонента создать заявку на выбранное окно. request_id — ID звонка для безопасного повтора."""
+        return book.create(slot, need, request_id=request_id or None)
 
     return server
 

@@ -20,9 +20,14 @@ class AppointmentBook:
                 CREATE TABLE IF NOT EXISTS appointments (
                     id TEXT PRIMARY KEY,
                     slot TEXT NOT NULL UNIQUE,
-                    need TEXT NOT NULL
+                    need TEXT NOT NULL,
+                    request_id TEXT UNIQUE
                 )
             """)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(appointments)")}
+            if "request_id" not in columns:
+                conn.execute("ALTER TABLE appointments ADD COLUMN request_id TEXT")
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS appointments_request_id_idx ON appointments(request_id)")
 
     def _offered_slots(self) -> list[str]:
         today = datetime.now(self.zone).date()
@@ -34,19 +39,23 @@ class AppointmentBook:
             occupied = {row[0] for row in conn.execute("SELECT slot FROM appointments")}
         return [slot for slot in self._offered_slots() if slot not in occupied]
 
-    def create(self, slot: str, need: str) -> dict:
+    def create(self, slot: str, need: str, request_id: str | None = None) -> dict:
         need = need.strip()
         if not need or len(need) > 500:
             raise ValueError("Опишите заявку в пределах 500 символов")
         with closing(sqlite3.connect(self.path)) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
-            previous = conn.execute("SELECT id, need FROM appointments WHERE slot = ?", (slot,)).fetchone()
-            if previous:
-                if previous[1] != need:
-                    raise ValueError("Это окно уже занято. Запросите свободные окна")
-                return {"id": previous[0], "slot": slot, "need": need}
+            if request_id:
+                previous = conn.execute("SELECT id, slot, need FROM appointments WHERE request_id = ?", (request_id,)).fetchone()
+                if previous:
+                    if previous[1:] != (slot, need):
+                        raise ValueError("Эта заявка уже создана с другими данными")
+                    return {"id": previous[0], "slot": slot, "need": need}
+            if conn.execute("SELECT 1 FROM appointments WHERE slot = ?", (slot,)).fetchone():
+                raise ValueError("Это окно уже занято. Запросите свободные окна")
             if slot not in self._offered_slots():
                 raise ValueError("Это окно недоступно. Выберите время из списка свободных окон")
-            request_id = uuid4().hex
-            conn.execute("INSERT INTO appointments VALUES (?, ?, ?)", (request_id, slot, need))
-            return {"id": request_id, "slot": slot, "need": need}
+            appointment_id = uuid4().hex
+            conn.execute("INSERT INTO appointments (id, slot, need, request_id) VALUES (?, ?, ?, ?)",
+                         (appointment_id, slot, need, request_id))
+            return {"id": appointment_id, "slot": slot, "need": need}
