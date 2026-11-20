@@ -47,6 +47,7 @@ class Pipeline:
     transfer_call: Callable[[str], Awaitable[bool]]  # перевести на номер; False = не вышло
     phrases: Dict[str, Any]  # tenants/<имя>/telephony.json
     stream_audio: Optional[Callable[[str], AsyncIterator[bytes]]] = None
+    finalize_call: Optional[Callable[[str, str], Awaitable[Any]]] = None
 
 
 class SpeechPlaybackError(RuntimeError):
@@ -85,6 +86,8 @@ class CallSession:
         self._respond_task = asyncio.create_task(self._say(self.p.phrases["greeting"]))
 
     async def close(self) -> None:
+        if self.closed:
+            return
         self.closed = True
         for task in (self._respond_task, self._worker_task, self._watchdog_task):
             if task and not task.done():
@@ -93,6 +96,11 @@ class CallSession:
             *(t for t in (self._respond_task, self._worker_task, self._watchdog_task) if t),
             return_exceptions=True,
         )
+        if self.p.finalize_call:
+            try:
+                await self.p.finalize_call(self.call_sid, self.caller)
+            except Exception as exc:
+                logger.error(f"call finalization failed: {type(exc).__name__}")
         logger.info(f"call end phone={mask_phone(self.caller)} seconds={time.monotonic() - self._started:.0f}")
 
     @property

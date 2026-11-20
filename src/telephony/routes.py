@@ -125,6 +125,7 @@ def make_pipeline(send_audio, clear_audio, end_call, transfer_call) -> Pipeline:
         transfer_call=transfer_call,
         phrases=load_telephony(),
         stream_audio=tts_service.stream_elevenlabs_mulaw if tts_service.provider == "elevenlabs" else None,
+        finalize_call=dialog.finalize_call,
     )
 
 

@@ -7,14 +7,10 @@ from uuid import uuid4
 from src.agent.escalation import escalation_intent
 from src.agent.tools import search_knowledge_base
 from src.services.appointments import AppointmentBook
+from src.services.qualification import build_card, extract_facts
 from src.services.sqlite_store import _db, init_db
 from src.tenant import load_branding, load_telephony, read_tenant_file, tenant_dir
 
-_FIELDS = {
-    "need": r"(?:нужен|нужна|нужно|интересует)\s+(?!(?:через|согласовать)\b)([^.!?,;]+)",
-    "budget_byn": r"бюджет(?:\s+до)?\s*[:—-]?\s*(\d[\d\s\u00a0]*\d|\d)",
-    "days": r"(?:через|в течение)\s+(\d+)\s*(?:дн|сут)",
-}
 _QUESTIONS = {
     "need": "Расскажите, пожалуйста, что вам нужно.",
     "budget_byn": "На какой бюджет вы ориентируетесь?",
@@ -111,7 +107,7 @@ class CallSimulator:
             messages = self.model_messages(state, text, heard)
             state["history"] = [{"role": row["role"], "text": row["content"]} for row in messages]
 
-            self._extract(state["facts"], text)
+            extract_facts(state["facts"], text)
             if escalation_intent(text):
                 answer = self.phrases["transfer_prompt"]
                 state["status"] = "transferred"
@@ -138,18 +134,6 @@ class CallSimulator:
                 state["card"] = self._card(state)
                 self._save(conn, state)
             return state
-
-    @staticmethod
-    def _extract(facts: dict, text: str) -> None:
-        for key, regex in _FIELDS.items():
-            matches = re.findall(regex, text, re.IGNORECASE)
-            if matches:
-                facts[key] = (matches[-1].strip() if key == "need"
-                              else int(re.sub(r"\s", "", matches[-1])))
-        if re.search(r"(?:сам[а]? согласую|я принимаю решение)", text, re.IGNORECASE):
-            facts["authority"] = "самостоятельно"
-        elif re.search(r"(?:надо согласовать|нужно согласовать|решает руководитель)", text, re.IGNORECASE):
-            facts["authority"] = "нужно согласование"
 
     def _answer(self, facts: dict, text: str, call_id: str) -> str:
         lower = text.lower()
@@ -193,20 +177,7 @@ class CallSimulator:
         return " ".join(part for part in (answer, missing) if part) or "Спасибо, я сохранила уточнения по вашей заявке."
 
     def _card(self, state: dict) -> dict:
-        facts = state["facts"]
-        budget = facts.get("budget_byn")
-        days = facts.get("days")
-        if not facts.get("need"):
-            category, reason = "INVALID", "Потребность не зафиксирована"
-        elif budget is not None and budget < self.rules["minimum_budget_byn"]:
-            category, reason = "COLD", "Бюджет ниже демонстрационного ориентира"
-        elif (budget is not None and days is not None and days <= self.rules["hot_days"]
-              and facts.get("authority") == "самостоятельно"):
-            category, reason = "HOT", "Бюджет и близкий срок подтверждены, клиент согласует самостоятельно"
-        else:
-            category, reason = "WARM", "Потребность известна, часть условий требует уточнения"
-        return {"call_id": state["call_id"], **facts, "category": category, "reason": reason,
-                "next_step": self.rules["next_steps"][category]}
+        return build_card(state["call_id"], state["facts"], self.rules)
 
     @staticmethod
     def _save(conn, state: dict) -> None:

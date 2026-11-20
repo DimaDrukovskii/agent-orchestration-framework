@@ -13,6 +13,8 @@ from src.agent.hermes_agent import HermesAgent
 from src.agent.tools import CALLER_PHONE_MARK
 from src.config import settings
 from src.services.cache import CacheService
+from src.services.qualification import build_card, extract_facts
+from src.tenant import tenant_dir
 from src.utils import logger, mask_phone
 
 hermes = HermesAgent()
@@ -203,6 +205,65 @@ async def _deliver_chat(session_id: str, messages: List[str]) -> None:
             await send_message(settings.telegram_chat_id, text)
     except Exception as e:
         logger.error(f"[{session_id}] Chat delivery error: {type(e).__name__}")
+
+
+async def finalize_call(session_id: str, caller_phone: str) -> Dict[str, Any]:
+    """Persist a conservative result once the phone transport has actually ended."""
+    from src.services.storage import StorageService
+
+    storage = StorageService()
+    previous = await storage.get_call(session_id)
+    if previous and previous["action"] not in ("in_progress", "transfer"):
+        return previous
+
+    messages = await _get_session(session_id)
+    if not (tenant_dir() / "qualification.json").is_file():
+        await storage.upsert_call(
+            call_id=session_id, caller_phone=caller_phone,
+            transcript=_extract_transcript(messages) or (previous or {}).get("transcript", ""),
+            agent_response=(previous or {}).get("agent_response", ""),
+            action="transfer" if previous and previous["action"] == "transfer" else "finished",
+        )
+        return {"call_id": session_id, "action": "finished"}
+    cards = await storage.get_handoff_cards(session_id)
+    prior_card = cards[-1] if cards else {}
+    if previous and previous["action"] == "transfer" and "Итог: " in (prior_card.get("comment") or ""):
+        return previous
+    facts: Dict[str, Any] = {}
+    for message in messages:
+        if message.get("role") == "user" and isinstance(message.get("content"), str):
+            extract_facts(facts, message["content"])
+    if prior_card.get("need"):
+        facts["need"] = prior_card["need"]
+    if prior_card.get("budget") and "budget_byn" not in facts:
+        extract_facts(facts, f"Бюджет {prior_card['budget']}")
+    if prior_card.get("urgency") and "days" not in facts:
+        extract_facts(facts, prior_card["urgency"])
+    result = build_card(session_id, facts)
+    comment = f"Итог: {result['category']}. {result['reason']}. {result['next_step']}"
+    if prior_card.get("comment"):
+        original_comment = prior_card["comment"].split(" | Итог: ", 1)[0]
+        if not original_comment.startswith("Итог: "):
+            comment = f"{original_comment} | {comment}"
+    card = {
+        "name": prior_card.get("name"),
+        "need": facts.get("need") or "Потребность не уточнена",
+        "budget": str(facts["budget_byn"]) if "budget_byn" in facts else prior_card.get("budget"),
+        "urgency": prior_card.get("urgency") or (f"через {facts['days']} дн." if "days" in facts else None),
+        "contact_phone": prior_card.get("contact_phone") or caller_phone or "Номер не определён",
+        "comment": comment,
+    }
+    await storage.save_handoff_card(session_id, card)
+    action = "transfer" if previous and previous["action"] == "transfer" else result["category"]
+    await storage.upsert_call(
+        call_id=session_id,
+        caller_phone=caller_phone,
+        transcript=_extract_transcript(messages) or (previous or {}).get("transcript", ""),
+        agent_response=(previous or {}).get("agent_response", ""),
+        action=action,
+    )
+    logger.info(f"[{session_id}] call finalized category={result['category']} action={action}")
+    return result
 
 
 async def run_turn(
