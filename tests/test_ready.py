@@ -5,7 +5,8 @@ from src.api.ready_routes import build_report
 
 def cfg(**kw):
     base = dict(llm_provider="polza", polza_api_key="k", polza_model="anthropic/claude-haiku-5.5", anthropic_api_key="",
-                tts_provider="polza", tts_voice_id="Sarah", tts_model="", stt_model="openai/gpt-4o-transcribe",
+                openrouter_api_key="", openrouter_model="openai/gpt-4.1-mini",
+                tts_provider="polza", tts_api_key="", tts_voice_id="Sarah", tts_model="", stt_model="openai/gpt-4o-transcribe",
                 tenant="mts", agent_api_key="secret-123", telephony_enabled=False, public_base_url="", twilio_auth_token="")
     base.update(kw)
     return SimpleNamespace(**base)
@@ -47,3 +48,12 @@ def test_phone_needs_https_url_and_token():
 def test_report_never_contains_key_values():
     text = str(build_report(cfg(polza_api_key="SUPERSECRET", agent_api_key="ALSOSECRET")))
     assert "SUPERSECRET" not in text and "ALSOSECRET" not in text
+
+
+def test_openrouter_and_elevenlabs_require_their_keys():
+    report = build_report(cfg(llm_provider="openrouter", tts_provider="elevenlabs", polza_api_key=""))
+    checks = by_name(report)
+    assert not report["ready"]
+    assert checks["модель"]["status"] == "fail"
+    assert checks["озвучка"]["status"] == "fail"
+    assert checks["распознавание"]["status"] == "warn"

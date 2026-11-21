@@ -942,6 +942,8 @@
       let voices = [];
       let selectedVoiceURI = storeGet("voice_agent_call_voice");
       let serverVoiceAvailable = false;
+      let modelConfigured = false;
+      let modelProvider = "openrouter";
       const MODEL_PROFILES = ["default"];
       let modelProfile = MODEL_PROFILES.includes(storeGet("voice_agent_model_profile")) ? storeGet("voice_agent_model_profile") : "default";
 
@@ -1106,6 +1108,8 @@
         modelSelect.replaceChildren(defaultOpt);
         modelProfile = "default";
         modelSelect.value = modelProfile;
+        modelConfigured = status.default.configured === true;
+        modelProvider = status.default.provider;
       }
 
       async function checkModels() {
@@ -1236,6 +1240,12 @@
             resolve();
           };
           source.start();
+          if (activeCall.turnStartedAt) {
+            const latencyMs = Math.round(performance.now() - activeCall.turnStartedAt);
+            activeCall.turnStartedAt = 0;
+            window.voiceAgentLastLatencyMs = latencyMs;
+            console.info("voice_agent_first_audio_ms=" + latencyMs);
+          }
         });
       }
 
@@ -1327,6 +1337,7 @@
             }, BARGE_FINISH_TIMEOUT_MS);
           }
           latestText = heard.trim();
+          if (latestText) activeCall.lastSpeechAt = performance.now();
           showCaption("Вы", heard.trim());
         };
 
@@ -1607,6 +1618,7 @@
             } else interim += result[0].transcript;
           }
           latestText = (finalText + interim).trim();
+          if (latestText) activeCall.lastSpeechAt = performance.now();
           showCaption("Вы", latestText);
         };
 
@@ -1744,6 +1756,8 @@
       }
 
       async function handleUserTurn(activeCall, text) {
+        activeCall.turnStartedAt = activeCall.lastSpeechAt || performance.now();
+        activeCall.lastSpeechAt = 0;
         activeCall.busy = true; // пока агент думает и говорит, микрофон не слушаем
         teardownRecognition();
         showCaption("Вы", text);
@@ -1839,8 +1853,15 @@
         const [serverVoice, serverStt] = await Promise.all([
           checkServerVoice(),
           checkServerStt(),
+          checkModels(),
         ]);
         if (!isActive(activeCall)) return;
+        if (!modelConfigured) {
+          failCall(activeCall, modelProvider === "openrouter"
+            ? "Добавьте OPENROUTER_API_KEY в .env и перезапустите сервер."
+            : "Модель агента не настроена. Проверьте /ready и перезапустите сервер.");
+          return;
+        }
         if (!serverVoice || !activeCall.audio) {
           failCall(activeCall, "ElevenLabs недоступен. Проверьте голосовое подключение.");
           return;

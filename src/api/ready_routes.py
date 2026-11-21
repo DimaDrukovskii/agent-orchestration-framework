@@ -48,10 +48,14 @@ def build_report(cfg: Any = settings) -> Dict[str, Any]:
         checks.append(_check("озвучка", WARN, "выключена: агент отвечает только текстом", "TTS_PROVIDER=polza и TTS_VOICE_ID в .env"))
     elif cfg.tts_provider == "polza" and not (cfg.polza_api_key and cfg.tts_voice_id):
         checks.append(_check("озвучка", FAIL, "не хватает POLZA_API_KEY или TTS_VOICE_ID", "TTS_VOICE_ID=Sarah"))
+    elif cfg.tts_provider == "elevenlabs" and not (cfg.tts_api_key and cfg.tts_voice_id):
+        checks.append(_check("озвучка", FAIL, "не хватает TTS_API_KEY или TTS_VOICE_ID",
+                             "добавьте ключ и ID голоса ElevenLabs в .env"))
     else:
         checks.append(_check("озвучка", OK, f"{cfg.tts_provider}, {cfg.tts_model or 'модель по умолчанию'}"))
-    checks.append(_check("распознавание", OK if cfg.polza_api_key else WARN, cfg.stt_model if cfg.polza_api_key else "нужен POLZA_API_KEY",
-                         "" if cfg.polza_api_key else "добавьте ключ polza.ai"))
+    checks.append(_check("распознавание", OK if cfg.polza_api_key else WARN,
+                         cfg.stt_model if cfg.polza_api_key else "браузерное распознавание Chrome/Edge",
+                         "" if cfg.polza_api_key else "для телефонного канала подключите серверное STT"))
 
     # данные компании
     folder = tenant_dir()
