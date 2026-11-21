@@ -61,7 +61,7 @@ docs/
 
 ### Голосовой чат с Polza.ai и ElevenLabs
 
-В `.env` задайте `LLM_PROVIDER=polza`, `POLZA_API_KEY`, `POLZA_MODEL`, а для голоса — `TTS_PROVIDER=elevenlabs`, `TTS_API_KEY`, `TTS_VOICE_ID`. Адрес модели: `POLZA_BASE_URL=https://polza.ai/api/v1`. Переменные `HERMES_*` для этого режима не нужны. Для разговора через микрофон нужны зависимости проекта в `.venv`:
+Ключи можно ввести через локальную форму: `python3 scripts/key_setup.py`, затем открыть `http://127.0.0.1:8765/`. Она показывает только статус полей, не возвращает сохранённые секреты в браузер и пишет их в `.env` с правами `0600`. Для модели нужны `LLM_PROVIDER=polza`, `POLZA_API_KEY`, `POLZA_MODEL`; для голоса — `TTS_PROVIDER=elevenlabs`, `TTS_API_KEY`, `TTS_VOICE_ID`. Адрес модели: `POLZA_BASE_URL=https://polza.ai/api/v1`. Переменные `HERMES_*` для этого режима не нужны. Для разговора через микрофон нужны зависимости проекта в `.venv`:
 
 ```bash
 uv venv --python python3.11 .venv
