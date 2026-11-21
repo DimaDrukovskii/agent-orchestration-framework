@@ -59,16 +59,16 @@ docs/
 
 ## Запуск за 5 минут
 
-### Голосовой чат с OpenRouter и ElevenLabs
+### Голосовой чат с Polza.ai и ElevenLabs
 
-В `.env` задайте `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, а для голоса — `TTS_PROVIDER=elevenlabs`, `TTS_API_KEY`, `TTS_VOICE_ID`. Для разговора через микрофон нужны зависимости проекта в `.venv`:
+В `.env` задайте `LLM_PROVIDER=polza`, `POLZA_API_KEY`, `POLZA_MODEL`, а для голоса — `TTS_PROVIDER=elevenlabs`, `TTS_API_KEY`, `TTS_VOICE_ID`. Адрес модели: `POLZA_BASE_URL=https://polza.ai/api/v1`. Переменные `HERMES_*` для этого режима не нужны. Для разговора через микрофон нужны зависимости проекта в `.venv`:
 
 ```bash
 uv venv --python python3.11 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
 ```
 
-Запустите `bash scripts/voice_chat_cloud.sh` и откройте в Chrome `http://127.0.0.1:8000/demo/call.html?stt=browser`. Разрешите микрофон и нажмите «Начать звонок». Речь распознаёт браузер, ответы создаёт OpenRouter, голос синтезирует ElevenLabs. Веб-сервер слушает только `127.0.0.1`; если порт 8000 занят Docker-контейнером приложения, остановите его перед запуском скрипта.
+Запустите `bash scripts/voice_chat_polza.sh` и откройте в Chrome `http://127.0.0.1:8000/demo/call.html?stt=browser`. Разрешите микрофон и нажмите «Начать звонок». Речь распознаёт браузер, ответы создаёт модель через Polza.ai, голос синтезирует ElevenLabs. Веб-сервер слушает только `127.0.0.1`; если порт 8000 занят Docker-контейнером приложения, остановите его перед запуском скрипта.
 
 
 Нужны Python 3, Docker и ключ [polza.ai](https://polza.ai) (модель, голос и распознавание через один ключ).

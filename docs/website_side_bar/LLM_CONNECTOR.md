@@ -9,6 +9,8 @@
 | `hermes_agent` | настоящий Hermes Agent (Nous Research) как «мозг»: его OpenAI-совместимый сервер, модель и MCP-инструменты настраиваются на его стороне; наши tools ему не отправляются | `HERMES_AGENT_*`, `docker compose --profile hermes up -d`; для звонка `TELEPHONY_MODEL_PROFILE=hermes_agent` |
 | `openrouter` | облачная чат-модель через OpenRouter | `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` |
 
+Для текущего стенда выбран `LLM_PROVIDER=polza`: нужен только `POLZA_API_KEY`, адрес `https://polza.ai/api/v1` и чат-модель в `POLZA_MODEL`. Голос идёт отдельно через ElevenLabs. `HERMES_API_KEY`, `HERMES_AGENT_API_KEY` и `HERMES_MODEL_BASE_URL` относятся к необязательному серверу Hermes Agent и для этого запуска не используются.
+
 `polza`, `openrouter` и `hermes_agent` идут одним OpenAI-совместимым путём (`_run_openai` и потоковый `run_stream`), история хранится в формате `tool_calls`. Настроенную модель показывает `GET /api/llm/status`.
 
 ## Агент, модель и MCP: кто за что отвечает

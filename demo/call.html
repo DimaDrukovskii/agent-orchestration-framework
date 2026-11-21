@@ -943,7 +943,7 @@
       let selectedVoiceURI = storeGet("voice_agent_call_voice");
       let serverVoiceAvailable = false;
       let modelConfigured = false;
-      let modelProvider = "openrouter";
+      let modelProvider = "polza";
       const MODEL_PROFILES = ["default"];
       let modelProfile = MODEL_PROFILES.includes(storeGet("voice_agent_model_profile")) ? storeGet("voice_agent_model_profile") : "default";
 
@@ -1781,7 +1781,7 @@
 
         activeCall.agentFailures = result.failed ? activeCall.agentFailures + 1 : 0;
         if (activeCall.agentFailures >= MAX_AGENT_FAILURES) {
-          failCall(activeCall, "Агент не отвечает. Облако: проверьте баланс Polza. Локальная модель: проверьте, что сервер запущен.");
+          failCall(activeCall, "Агент не отвечает. Проверьте ключ, баланс и доступность провайдера модели.");
           return;
         }
 
@@ -1857,8 +1857,8 @@
         ]);
         if (!isActive(activeCall)) return;
         if (!modelConfigured) {
-          failCall(activeCall, modelProvider === "openrouter"
-            ? "Добавьте OPENROUTER_API_KEY в .env и перезапустите сервер."
+          failCall(activeCall, modelProvider === "polza"
+            ? "Добавьте POLZA_API_KEY в .env и перезапустите сервер."
             : "Модель агента не настроена. Проверьте /ready и перезапустите сервер.");
           return;
         }
