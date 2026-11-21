@@ -724,14 +724,15 @@
         color: #f6f7f9;
         box-shadow: 0 28px 80px rgba(0, 0, 0, .32);
       }
+      html:not(.embed) .card { display: flex; flex-direction: column; }
       html:not(.embed) .who-name { font-size: 20px; }
       html:not(.embed) .who-sub { color: #a9b6c5; }
-      html:not(.embed) .stage { min-height: 410px; }
+      html:not(.embed) .stage { min-height: 0; flex: 1; justify-content: center; }
       html:not(.embed) .status,
       html:not(.embed) .timer { color: #e3e9f0; }
       html:not(.embed) .caption { color: #dce7f2; }
       html:not(.embed) .caption-text { color: #f6f7f9; }
-      html:not(.embed) .controls { justify-content: center; gap: 24px; }
+      html:not(.embed) .controls { justify-content: center; gap: 24px; margin-top: auto; }
       @media (max-width: 480px) {
         html:not(.embed) .widget { padding: 0; }
         html:not(.embed) .card { min-height: 100dvh; border-radius: 0; }
@@ -847,6 +848,7 @@
       // --- конфиг ---------------------------------------------------------
       const EMBED = document.documentElement.classList.contains("embed");
       const API_URL = "/api/hermes/dialog";
+      const EVENTS_URL = "/api/hermes/dialog/events";
       const TTS_URL = "/api/tts";
       const TTS_STATUS_URL = "/api/tts/status";
       const LLM_STATUS_URL = "/api/llm/status";
@@ -940,7 +942,7 @@
       let voices = [];
       let selectedVoiceURI = storeGet("voice_agent_call_voice");
       let serverVoiceAvailable = false;
-      const MODEL_PROFILES = ["default", "local"];
+      const MODEL_PROFILES = ["default"];
       let modelProfile = MODEL_PROFILES.includes(storeGet("voice_agent_model_profile")) ? storeGet("voice_agent_model_profile") : "default";
 
       // --- хранилище (может быть недоступно) ------------------------------
@@ -1094,20 +1096,15 @@
         } finally {
           clearTimeout(timeout);
         }
-        voiceModeEl.textContent = serverVoiceAvailable ? "серверный (живой)" : "браузерный (резервный, роботизированный)";
+        voiceModeEl.textContent = serverVoiceAvailable ? "ElevenLabs" : "ElevenLabs недоступен";
         return serverVoiceAvailable;
       }
 
       // --- выбор модели агента ---------------------------------------------
       function setModelOptions(status) {
         const defaultOpt = new Option("Облако — " + status.default.model, "default");
-        const localOpt = new Option(
-          "Локальная — " + status.local.model + (status.local.available ? "" : " (сервер не запущен)"),
-          "local"
-        );
-        localOpt.disabled = !status.local.available;
-        modelSelect.replaceChildren(defaultOpt, localOpt);
-        if (modelProfile === "local" && !status.local.available) modelProfile = "default";
+        modelSelect.replaceChildren(defaultOpt);
+        modelProfile = "default";
         modelSelect.value = modelProfile;
       }
 
@@ -1699,6 +1696,53 @@
         }
       }
 
+      async function requestAgentEvents(activeCall, text, onSentence) {
+        const controller = new AbortController();
+        if (activeCall.turnController) activeCall.turnController.abort();
+        activeCall.turnController = controller;
+        const spoken = activeCall.uncertain ? UNCERTAIN_MARK + text : text;
+        activeCall.uncertain = false;
+        try {
+          const response = await fetch(EVENTS_URL, {
+            method: "POST",
+            headers: apiHeaders(),
+            body: JSON.stringify({ session_id: activeCall.sessionId, caller_phone: CALLER_PHONE,
+              user_message: spoken, model_profile: modelProfile }),
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) throw new Error("dialog " + response.status);
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let pending = "";
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            pending += decoder.decode(value, { stream: true });
+            let end;
+            while ((end = pending.indexOf("\n")) >= 0) {
+              const line = pending.slice(0, end);
+              pending = pending.slice(end + 1);
+              if (!line.trim()) continue;
+              const event = JSON.parse(line);
+              if (event.type === "sentence") {
+                await onSentence(event.text);
+                if (activeCall.interrupted || !isActive(activeCall)) {
+                  controller.abort();
+                  return { interrupted: true };
+                }
+              } else if (event.type === "done") return event;
+              else if (event.type === "error") throw new Error(event.message);
+            }
+          }
+          throw new Error("dialog stream ended without result");
+        } catch (error) {
+          if (controller.signal.aborted) return { interrupted: true };
+          return { failed: true, reply: FALLBACK_REPLY };
+        } finally {
+          if (activeCall.turnController === controller) activeCall.turnController = null;
+        }
+      }
+
       async function handleUserTurn(activeCall, text) {
         activeCall.busy = true; // пока агент думает и говорит, микрофон не слушаем
         teardownRecognition();
@@ -1706,8 +1750,16 @@
         addMessage("user", text);
         setPhase("thinking");
 
-        const result = await requestAgent(activeCall, text);
+        let spokenText = "";
+        const result = await requestAgentEvents(activeCall, text, async (sentence) => {
+          if (!isActive(activeCall)) return;
+          spokenText += (spokenText ? " " : "") + sentence;
+          showCaption(agentName, sentence);
+          setPhase("speaking");
+          await speak(activeCall, sentence);
+        });
         if (!isActive(activeCall)) return;
+        if (result.interrupted) return;
         if (result.fatal) {
           failCall(activeCall, result.fatal);
           return;
@@ -1719,12 +1771,14 @@
           return;
         }
 
-        addMessage("agent", result.reply);
+        addMessage("agent", result.response || spokenText || result.reply);
         (result.chat || []).forEach((extra) => addMessage("agent", extra));
         addLinks(result.links || []);
-        showCaption(agentName, result.reply);
-        setPhase("speaking");
-        await speak(activeCall, result.reply, { interruptible: !result.transfer });
+        if (!spokenText && result.reply) {
+          showCaption(agentName, result.reply);
+          setPhase("speaking");
+          await speak(activeCall, result.reply, { interruptible: !result.transfer });
+        }
         if (!isActive(activeCall)) return;
         if (activeCall.interrupted) {
           activeCall.interrupted = false; // абонент перебил: его фразу уже дослушивает распознавание
@@ -1759,6 +1813,7 @@
           startedAt: 0,
           timerId: null,
           voice: "server",
+          turnController: null,
           abort: new AbortController(),
           audio: null,
           analyser: null,
@@ -1820,6 +1875,7 @@
 
       function teardownCall(activeCall) {
         activeCall.ended = true;
+        if (activeCall.turnController) activeCall.turnController.abort();
         clearInterval(activeCall.timerId);
         activeCall.abort.abort();
         teardownRecognition();

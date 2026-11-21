@@ -22,7 +22,7 @@ _agents: Dict[str, HermesAgent] = {}  # профили кроме дефолтн
 
 
 def agent_for(model_profile: Optional[str]) -> HermesAgent:
-    """"default"/None — LLM_PROVIDER, "local" — локальный сервер."""
+    """"default"/None — LLM_PROVIDER, "hermes_agent" — отдельный Hermes сервер."""
     if model_profile in (None, "default"):
         return hermes
     if model_profile not in _agents:

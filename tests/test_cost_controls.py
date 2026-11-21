@@ -171,8 +171,7 @@ def test_reasoning_param_omitted_when_setting_empty_or_not_polza(monkeypatch):
     assert "extra_body" not in captured
 
     monkeypatch.setattr(settings, "llm_reasoning_effort", "none")
-    monkeypatch.setattr(settings, "local_base_url", "http://localhost:11434/v1")
-    local = HermesAgent("local")
-    monkeypatch.setattr(local.client.chat.completions, "create", fake_create)
-    asyncio.run(local.run([{"role": "user", "content": "привет"}], "+79990000000"))
+    cloud = HermesAgent("openrouter")
+    monkeypatch.setattr(cloud.client.chat.completions, "create", fake_create)
+    asyncio.run(cloud.run([{"role": "user", "content": "привет"}], "+79990000000"))
     assert "extra_body" not in captured

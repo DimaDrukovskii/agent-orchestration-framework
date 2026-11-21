@@ -20,7 +20,7 @@ from src.agent.hermes_prompts import HERMES_CHAT_RULE, HERMES_INTERRUPT_RULE, HE
 from src.utils import logger, mask_phone
 
 # провайдеры с OpenAI-совместимым API (tool_calls, role="tool")
-OPENAI_COMPAT_PROVIDERS = ("polza", "local", "hermes_agent")
+OPENAI_COMPAT_PROVIDERS = ("polza", "openrouter", "hermes_agent")
 MAX_TOOL_ITERATIONS = 4  # защита от зацикливания агента
 CLOSING_PROMPT = "Коротко скажи абоненту, что происходит дальше (своими словами, не как бот)."
 
@@ -124,6 +124,26 @@ def pop_sentences(buffer: str) -> Tuple[List[str], str]:
     return [p.strip() for p in parts[:-1] if p.strip()], parts[-1]
 
 
+def pop_speech_chunks(buffer: str) -> Tuple[List[str], str]:
+    """Отдать первую естественную паузу раньше конца длинного предложения."""
+    ready: List[str] = []
+    while buffer:
+        sentence = SENTENCE_END.search(buffer)
+        comma = next((match for match in re.finditer(r"[,;:]\s+", buffer) if match.start() >= 28), None)
+        boundary = None
+        if sentence:
+            boundary = sentence.end()
+        if comma and comma.start() >= 28 and (boundary is None or comma.end() < boundary):
+            boundary = comma.end()
+        if boundary is None:
+            break
+        chunk = buffer[:boundary].strip()
+        if chunk:
+            ready.append(chunk)
+        buffer = buffer[boundary:]
+    return ready, buffer
+
+
 def new_turn_state() -> Dict[str, Any]:
     return {"pending_transfer": None, "handoff_card": None, "chat": [], "links": []}
 
@@ -171,13 +191,13 @@ class HermesAgent:
                     timeout=settings.hermes_agent_timeout_seconds,
                 )
                 self.model = settings.hermes_agent_model
-            elif self.provider == "local":
+            elif self.provider == "openrouter":
                 self.client = AsyncOpenAI(
-                    api_key=settings.local_api_key,
-                    base_url=settings.local_base_url,
-                    timeout=settings.local_timeout_seconds,
+                    api_key=settings.openrouter_api_key or "not-configured",
+                    base_url=settings.openrouter_base_url,
+                    timeout=settings.agent_timeout_seconds,
                 )
-                self.model = settings.local_model
+                self.model = settings.openrouter_model
             else:
                 self.client = AsyncOpenAI(
                     api_key=settings.polza_api_key,
@@ -396,7 +416,7 @@ class HermesAgent:
                 if delta.content:
                     buffer += delta.content
                     text += delta.content
-                    ready, buffer = pop_sentences(buffer)
+                    ready, buffer = pop_speech_chunks(buffer)
                     for sentence in ready:
                         spoken.append(sentence)
                         yield {"type": "sentence", "text": sentence}

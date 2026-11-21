@@ -21,8 +21,8 @@
 | `TTS_MODEL` | пусто = модель провайдера по умолчанию | например `elevenlabs/text-to-speech-turbo-2-5` — быстрее |
 | `TTS_STABILITY`, `TTS_SIMILARITY` | `0.45`, `0.8` | ниже stability — эмоциональнее |
 | `TTS_API_KEY` | пусто | только для `TTS_PROVIDER=elevenlabs` |
-| `LOCAL_BASE_URL` | `http://host.docker.internal:11434/v1` | OpenAI-совместимый сервер модели на этой или другой машине (Ollama, LM Studio, vLLM) |
-| `LOCAL_MODEL`, `LOCAL_API_KEY` | `hermes3`, `local` | имя модели на том сервере; ключ обычно не проверяется |
+| `OPENROUTER_API_KEY` | пусто | ключ облачной модели; хранить только в `.env` |
+| `OPENROUTER_MODEL` | `openai/gpt-4.1-mini` | чат-модель OpenRouter с поддержкой инструментов и потокового ответа |
 
 ## Хранилище — по умолчанию SQLite, ничего поднимать не нужно
 

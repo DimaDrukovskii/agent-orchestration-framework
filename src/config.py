@@ -18,14 +18,10 @@ class Settings(BaseSettings):
     polza_base_url: str = "https://polza.ai/api/v1"
     polza_model: str = "anthropic/claude-sonnet-4"
 
-    # Локальная модель (provider="local" в виджете звонка): любой
-    # OpenAI-совместимый сервер — Ollama (:11434), LM Studio (:1234), vLLM.
-    # Из контейнера хост виден как host.docker.internal. Для звонка нужна
-    # модель с поддержкой tool calling (например hermes3, qwen2.5, llama3.1).
-    local_base_url: str = "http://host.docker.internal:11434/v1"
-    local_model: str = "hermes3"
-    local_api_key: str = "local"  # серверу обычно всё равно, но поле обязательно
-    local_timeout_seconds: int = 120  # локальная модель на ноутбуке отвечает медленнее облака
+    # OpenRouter: облачная модель с поддержкой streaming и tool calling.
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "openai/gpt-4.1-mini"
 
     # Hermes Agent (Nous Research) как «мозг»: его OpenAI-совместимый сервер (порт 8642). Свой цикл, свои
     # инструменты и MCP настраиваются на его стороне; наши tools ему не отправляются. Профиль "hermes_agent".
@@ -94,7 +90,7 @@ class Settings(BaseSettings):
     telephony_max_concurrent_calls: int = 100  # больше одновременных звонков не принимаем
     telephony_max_call_seconds: int = 1200  # потолок длины звонка (защита бюджета)
     telephony_silence_end_ms: int = 700  # пауза, после которой реплика абонента считается законченной
-    telephony_model_profile: str = "default"  # «мозг» звонка: default | local | hermes_agent
+    telephony_model_profile: str = "default"  # «мозг» звонка: default | hermes_agent
     telephony_filler_after_ms: int = 1200  # агент молчит дольше: сам говорит «угу, секунду» (fillers в telephony.json)
     telephony_long_filler_after_ms: int = 3000  # и всё ещё думает: «ещё секунду, уточняю» (long_fillers)
     telephony_turn_timeout_seconds: int = 20  # модель молчит дольше: извиняемся и просим повторить, а не висим в тишине

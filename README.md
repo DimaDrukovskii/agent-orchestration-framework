@@ -59,18 +59,16 @@ docs/
 
 ## Запуск за 5 минут
 
-### Локальный голосовой чат с ElevenLabs
+### Голосовой чат с OpenRouter и ElevenLabs
 
-Если в `.env` уже заданы `TTS_PROVIDER=elevenlabs`, `TTS_API_KEY` и `TTS_VOICE_ID`, можно проверить разговор через микрофон без телефонной линии. Нужны установленная Ollama с моделью `qwen2.5:3b` и зависимости проекта в `.venv`:
+В `.env` задайте `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, а для голоса — `TTS_PROVIDER=elevenlabs`, `TTS_API_KEY`, `TTS_VOICE_ID`. Для разговора через микрофон нужны зависимости проекта в `.venv`:
 
 ```bash
 uv venv --python python3.11 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-ollama pull qwen2.5:3b
-ollama serve
 ```
 
-В другом терминале запустите `bash scripts/voice_chat_local.sh` и откройте в Chrome `http://127.0.0.1:8000/demo/call.html?stt=browser`. Разрешите микрофон и нажмите «Начать звонок». Речь распознаёт браузер, ответы создаёт локальная модель, голос синтезирует ElevenLabs. Этот режим слушает только `127.0.0.1`; если порт 8000 занят Docker-контейнером приложения, остановите его перед запуском скрипта.
+Запустите `bash scripts/voice_chat_cloud.sh` и откройте в Chrome `http://127.0.0.1:8000/demo/call.html?stt=browser`. Разрешите микрофон и нажмите «Начать звонок». Речь распознаёт браузер, ответы создаёт OpenRouter, голос синтезирует ElevenLabs. Веб-сервер слушает только `127.0.0.1`; если порт 8000 занят Docker-контейнером приложения, остановите его перед запуском скрипта.
 
 
 Нужны Python 3, Docker и ключ [polza.ai](https://polza.ai) (модель, голос и распознавание через один ключ).

@@ -1,45 +1,28 @@
-"""
-GET /api/llm/status -> какие модели доступны виджету звонка.
-
-default — модель из LLM_PROVIDER (облако), local — локальный сервер
-(Ollama/LM Studio/vLLM). Виджет по этому ответу показывает, можно ли
-выбрать локальную модель, а не падает на первой же реплике.
-"""
-
-import httpx
+"""Показывает настроенную облачную модель без раскрытия ключа."""
 from fastapi import APIRouter, Depends
 
 from src.api.auth import verify_api_key
 from src.config import settings
 
-PROBE_TIMEOUT_SECONDS = 2.0
-
 router = APIRouter(dependencies=[Depends(verify_api_key)])
-
-
-async def probe_local() -> bool:
-    """Локальный сервер отвечает на GET /models (есть у Ollama, LM Studio, vLLM)."""
-    url = f"{settings.local_base_url.rstrip('/')}/models"
-    try:
-        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
-            response = await client.get(url)
-            return response.status_code == 200
-    except Exception:
-        # не только сеть: шаблонный или кривой адрес в .env тоже означает «недоступно»
-        return False
 
 
 def _default_model() -> str:
     if settings.llm_provider == "polza":
         return settings.polza_model
-    if settings.llm_provider == "local":
-        return settings.local_model
+    if settings.llm_provider == "openrouter":
+        return settings.openrouter_model
+    if settings.llm_provider == "hermes_agent":
+        return settings.hermes_agent_model
     return settings.anthropic_model
 
 
 @router.get("/llm/status")
 async def llm_status():
-    return {
-        "default": {"provider": settings.llm_provider, "model": _default_model()},
-        "local": {"available": await probe_local(), "model": settings.local_model},
-    }
+    configured = {
+        "polza": bool(settings.polza_api_key),
+        "openrouter": bool(settings.openrouter_api_key),
+        "hermes_agent": bool(settings.hermes_agent_base_url),
+        "anthropic": bool(settings.anthropic_api_key),
+    }.get(settings.llm_provider, False)
+    return {"default": {"provider": settings.llm_provider, "model": _default_model(), "configured": configured}}

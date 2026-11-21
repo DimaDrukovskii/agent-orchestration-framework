@@ -23,9 +23,9 @@ services:
       - POLZA_API_KEY=${POLZA_API_KEY:-}
       - POLZA_BASE_URL=${POLZA_BASE_URL:-https://polza.ai/api/v1}
       - POLZA_MODEL=${POLZA_MODEL:-anthropic/claude-haiku-5.5}
-      - LOCAL_BASE_URL=${LOCAL_BASE_URL:-http://host.docker.internal:11434/v1}
-      - LOCAL_MODEL=${LOCAL_MODEL:-hermes3}
-      - LOCAL_API_KEY=${LOCAL_API_KEY:-local}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/gpt-4.1-mini}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
       - TTS_PROVIDER=${TTS_PROVIDER:-none}
       - TTS_API_KEY=${TTS_API_KEY:-}

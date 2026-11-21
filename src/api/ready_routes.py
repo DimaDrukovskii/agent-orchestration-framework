@@ -33,6 +33,10 @@ def build_report(cfg: Any = settings) -> Dict[str, Any]:
                                  "поставьте anthropic/claude-haiku-5.5"))
         else:
             checks.append(_check("модель", OK, f"polza.ai, {cfg.polza_model}"))
+    elif cfg.llm_provider == "openrouter":
+        checks.append(_check("модель", OK if cfg.openrouter_api_key else FAIL,
+                             f"OpenRouter, {cfg.openrouter_model}",
+                             "" if cfg.openrouter_api_key else "добавьте OPENROUTER_API_KEY в .env"))
     elif cfg.llm_provider == "anthropic":
         checks.append(_check("модель", OK if cfg.anthropic_api_key else FAIL, "Claude напрямую",
                              "" if cfg.anthropic_api_key else "добавьте ANTHROPIC_API_KEY"))

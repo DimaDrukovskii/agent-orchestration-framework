@@ -11,14 +11,12 @@ if [[ ! -x .venv/bin/uvicorn ]]; then
   echo 'Установите зависимости: uv venv --python python3.11 .venv && uv pip install --python .venv/bin/python -r requirements.txt' >&2
   exit 1
 fi
-if ! curl --silent --fail --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then
-  echo 'Запустите Ollama: ollama serve' >&2
+if ! grep -Eq '^OPENROUTER_API_KEY=.+$' .env; then
+  echo 'Добавьте OPENROUTER_API_KEY в .env. Ключ не передавайте в чат.' >&2
   exit 1
 fi
 
-export LLM_PROVIDER=local
-export LOCAL_BASE_URL=http://127.0.0.1:11434/v1
-export LOCAL_MODEL="${LOCAL_MODEL:-qwen2.5:3b}"
+export LLM_PROVIDER=openrouter
 export TELEPHONY_ENABLED=false
 export CALLBACK_SIMULATOR_ENABLED=true
 export AGENT_API_KEY=test-local-key

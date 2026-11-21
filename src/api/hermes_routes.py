@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -18,7 +19,7 @@ class HermesDialogRequest(BaseModel):
     session_id: str
     caller_phone: str
     user_message: str
-    model_profile: Optional[Literal["default", "local", "hermes_agent"]] = None
+    model_profile: Optional[Literal["default", "hermes_agent"]] = None
 
 
 class HermesDialogResponse(BaseModel):
@@ -110,6 +111,24 @@ async def hermes_dialog_stream(request: HermesDialogRequest):
     except Exception as e:
         logger.error(f"Hermes stream error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/hermes/dialog/events")
+async def hermes_dialog_events(request: HermesDialogRequest):
+    """Поток законченных фраз с обычным циклом инструментов и сохранением истории."""
+    session_var.set(request.session_id)
+
+    async def events():
+        try:
+            async for event in dialog.run_turn_stream(
+                request.session_id, request.caller_phone, request.user_message, request.model_profile
+            ):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except Exception as exc:
+            logger.error(f"[{request.session_id}] dialog stream error: {type(exc).__name__}: {exc}")
+            yield json.dumps({"type": "error", "message": "Агент не ответил. Попробуйте ещё раз."}, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(events(), media_type="application/x-ndjson")
 
 
 @router.get("/hermes/dialog/{session_id}/history")
