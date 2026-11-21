@@ -696,6 +696,46 @@
           animation: none !important;
         }
       }
+
+      /* Самостоятельная страница выглядит как экран звонка, без чата и панели демо. */
+      html:not(.embed) body {
+        display: grid;
+        place-items: center;
+        background: #10151c;
+      }
+      html:not(.embed) .demo-note,
+      html:not(.embed) .launcher,
+      html:not(.embed) .chat,
+      html:not(.embed) .composer,
+      html:not(.embed) .settings,
+      html:not(.embed) .head-actions { display: none !important; }
+      html:not(.embed) .widget {
+        position: static;
+        width: min(100%, 420px);
+        padding: 20px;
+      }
+      html:not(.embed) .card {
+        display: block;
+        width: 100%;
+        min-height: min(680px, calc(100dvh - 40px));
+        padding: 28px;
+        border-radius: 32px;
+        background: #1b2430;
+        color: #f6f7f9;
+        box-shadow: 0 28px 80px rgba(0, 0, 0, .32);
+      }
+      html:not(.embed) .who-name { font-size: 20px; }
+      html:not(.embed) .who-sub { color: #a9b6c5; }
+      html:not(.embed) .stage { min-height: 410px; }
+      html:not(.embed) .status,
+      html:not(.embed) .timer { color: #e3e9f0; }
+      html:not(.embed) .caption { color: #dce7f2; }
+      html:not(.embed) .caption-text { color: #f6f7f9; }
+      html:not(.embed) .controls { justify-content: center; gap: 24px; }
+      @media (max-width: 480px) {
+        html:not(.embed) .widget { padding: 0; }
+        html:not(.embed) .card { min-height: 100dvh; border-radius: 0; }
+      }
     </style>
       <script>
       if (new URLSearchParams(location.search).get("embed") === "1") document.documentElement.classList.add("embed");
@@ -812,10 +852,9 @@
       const LLM_STATUS_URL = "/api/llm/status";
       const CALLER_PHONE = "+79990000000";
       const DEFAULT_API_KEY = "test-local-key";
-      const CONNECT_DELAY_MS = 2200;
       const REQUEST_TIMEOUT_MS = 35000;
       const STATUS_TIMEOUT_MS = 4000;
-      const LISTEN_RESUME_DELAY_MS = 350; // даём затихнуть эху динамиков
+      const LISTEN_RESUME_DELAY_MS = 100;
       const LISTEN_RETRY_DELAY_MS = 250;
       const NETWORK_RETRY_DELAY_MS = 1500;
       const MAX_RECOGNITION_FAILURES = 4;
@@ -824,8 +863,8 @@
       const BROWSER_SPEECH_RATE = 1.05;
       // перебивание: пока Алина говорит, слушаем микрофон; ?barge=0 в адресе — выключить
       const BARGE_IN_ENABLED = new URLSearchParams(location.search).get("barge") !== "0";
-      const BARGE_MIN_CHARS = 10; // короче или одно слово — считаем шумом или эхом
-      const BARGE_MIN_WORDS = 2;
+      const BARGE_MIN_CHARS = 3;
+      const BARGE_MIN_WORDS = 1;
       const BARGE_ECHO_RATIO = 0.4; // столько слов совпало с речью Алины — это эхо динамиков, а не абонент
       const BARGE_FINISH_TIMEOUT_MS = 7000; // после перебивания дослушиваем не дольше этого
       const BARGE_RESTART_DELAY_MS = 200;
@@ -851,7 +890,7 @@
       const LEVEL_GAIN = 4;
       // подписи по умолчанию; настоящие приходят с сервера (GET /api/tenant, файл tenants/<клиент>/tenant.json)
       let agentName = "Вера";
-      let GREETING = "Здравствуйте! Это Вера, голосовой помощник «КлиматПлюс». Чем могу помочь?";
+      let GREETING = "Здравствуйте, я Вера. Слушаю вас.";
       let LAUNCHER_TEXT = "Поговорить с Верой";
       // ошибки ключа повторять бессмысленно: сразу объясняем, а не «связь пропала» три раза
       const FATAL_AGENT_ERRORS = {
@@ -1151,7 +1190,7 @@
         return chunks;
       }
 
-      // серверный голос: текст -> /api/tts -> mp3 -> декодирование. null = не вышло.
+      // Серверный голос обязателен: не подменяем его синтезатором браузера.
       async function fetchSpeech(activeCall, chunk) {
         try {
           const response = await fetch(TTS_URL, {
@@ -1164,10 +1203,7 @@
           return await activeCall.audio.decodeAudioData(await response.arrayBuffer());
         } catch (e) {
           if (!isActive(activeCall)) return null;
-          if (activeCall.voice === "server") {
-            activeCall.voice = "browser";
-            showNotice("Серверный голос недоступен — говорю голосом браузера.");
-          }
+          failCall(activeCall, "ElevenLabs сейчас не отвечает. Проверьте подключение и начните звонок снова.");
           return null;
         }
       }
@@ -1261,6 +1297,7 @@
 
         let triggered = false;
         let finalText = "";
+        let latestText = "";
         let minConfidence = 1;
 
         rec.onresult = (event) => {
@@ -1292,6 +1329,7 @@
               }
             }, BARGE_FINISH_TIMEOUT_MS);
           }
+          latestText = heard.trim();
           showCaption("Вы", heard.trim());
         };
 
@@ -1304,7 +1342,7 @@
 
           if (triggered) {
             activeCall.bargeActive = false;
-            const text = finalText.trim();
+            const text = (finalText || latestText).trim();
             if (text) {
               activeCall.failures = 0;
               activeCall.uncertain = minConfidence < CONFIDENCE_MIN;
@@ -1346,7 +1384,7 @@
             pending = activeCall.voice === "server" && i + 1 < chunks.length ? fetchSpeech(activeCall, chunks[i + 1]) : null;
             if (!isActive(activeCall) || activeCall.interrupted) return;
             if (buffer) await playBuffer(activeCall, buffer);
-            else await speakWithBrowser(chunks[i]);
+            else return;
           }
         } finally {
           // договорила сама — барж-распознавание больше не нужно; перебили — оно дослушивает абонента
@@ -1558,6 +1596,7 @@
         recognition = rec;
 
         let finalText = "";
+        let latestText = "";
         let failure = null;
         let minConfidence = 1;
 
@@ -1570,7 +1609,8 @@
               if (result[0].confidence > 0) minConfidence = Math.min(minConfidence, result[0].confidence);
             } else interim += result[0].transcript;
           }
-          showCaption("Вы", (finalText + interim).trim());
+          latestText = (finalText + interim).trim();
+          showCaption("Вы", latestText);
         };
 
         rec.onerror = (event) => {
@@ -1582,7 +1622,7 @@
           recognition = null;
           if (!isActive(activeCall)) return;
 
-          const text = finalText.trim();
+          const text = (finalText || latestText).trim();
           if (text) {
             activeCall.failures = 0;
             activeCall.uncertain = minConfidence < CONFIDENCE_MIN;
@@ -1718,7 +1758,7 @@
           agentFailures: 0,
           startedAt: 0,
           timerId: null,
-          voice: "browser",
+          voice: "server",
           abort: new AbortController(),
           audio: null,
           analyser: null,
@@ -1744,10 +1784,12 @@
         const [serverVoice, serverStt] = await Promise.all([
           checkServerVoice(),
           checkServerStt(),
-          sleep(CONNECT_DELAY_MS), // имитация дозвона
         ]);
         if (!isActive(activeCall)) return;
-        if (serverVoice && activeCall.audio) activeCall.voice = "server";
+        if (!serverVoice || !activeCall.audio) {
+          failCall(activeCall, "ElevenLabs недоступен. Проверьте голосовое подключение.");
+          return;
+        }
         activeCall.stt = "browser";
         if (serverStt && activeCall.audio && window.MediaRecorder && navigator.mediaDevices) {
           try {
@@ -1895,6 +1937,7 @@
         reportSize();
       }
 
+      if (!EMBED) setOpen(true);
       checkEnvironment();
       loadTenant();
       checkServerVoice();
