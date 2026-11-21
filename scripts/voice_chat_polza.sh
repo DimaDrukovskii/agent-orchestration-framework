@@ -21,5 +21,5 @@ export TELEPHONY_ENABLED=false
 export CALLBACK_SIMULATOR_ENABLED=true
 export AGENT_API_KEY=test-local-key
 
-echo 'Голосовой чат: http://127.0.0.1:8000/demo/call.html?stt=browser'
+echo 'Голосовой чат: http://127.0.0.1:8000/demo/call.html'
 exec .venv/bin/uvicorn src.main:app --host 127.0.0.1 --port 8000
