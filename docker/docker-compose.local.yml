@@ -1,0 +1,13 @@
+# Local-only browser demo. The page already supplies this non-secret demo key.
+services:
+  app:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    environment:
+      - AGENT_API_KEY=test-local-key
+      - TELEPHONY_ENABLED=false
+      - SIMULATOR_USE_HERMES=false
+      - CALLBACK_SIMULATOR_ENABLED=true
+  redis:
+    ports: !override
+      - "127.0.0.1:6379:6379"
