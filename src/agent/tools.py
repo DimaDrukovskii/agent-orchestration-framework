@@ -213,11 +213,12 @@ def kb_context(user_text: str, max_chars: int = KB_CONTEXT_MAX_CHARS) -> str:
         return ""
     from src.services.tour_catalog import market_context
 
-    market = market_context(query)
-    found = search_knowledge_base(query, max_chars)
+    market = market_context(query, max_chars=min(1000, max_chars))
+    remaining = max_chars - len(market) - (2 if market else 0)
+    found = search_knowledge_base(query, remaining) if remaining > 100 else ""
     if found.startswith(("Ничего не найдено", "Ошибка доступа")):
         found = ""
-    return "\n\n".join(part for part in (market, found) if part)[:max_chars]
+    return "\n\n".join(part for part in (market, found) if part)
 
 
 def check_account_status(phone: str) -> Dict[str, Any]:

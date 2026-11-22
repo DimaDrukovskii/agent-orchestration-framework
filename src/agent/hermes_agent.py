@@ -9,6 +9,7 @@ settings.llm_provider:
 со своей системой по ходу разговора.
 """
 
+import asyncio
 import json
 import re
 from typing import List, Dict, Any, AsyncGenerator, Optional, Tuple
@@ -376,7 +377,7 @@ class HermesAgent:
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
-            snippet = kb_context(recent_user_text(working))
+            snippet = await asyncio.to_thread(kb_context, recent_user_text(working))
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
                  and tool_enabled(t["function"]["name"])]
@@ -494,7 +495,7 @@ class HermesAgent:
         preretrieval = settings.llm_kb_preretrieval  # и для hermes_agent: справка подставляется в реплику, его инструментов не нужно
         snippet = ""
         if preretrieval:
-            snippet = kb_context(recent_user_text(working_messages))
+            snippet = await asyncio.to_thread(kb_context, recent_user_text(working_messages))
         tools = [t for t in TOOLS_SCHEMA_OPENAI
                  if not (preretrieval and t["function"]["name"] == "search_knowledge_base")
                  and tool_enabled(t["function"]["name"])]
