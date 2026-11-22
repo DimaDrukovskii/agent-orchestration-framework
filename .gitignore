@@ -12,3 +12,4 @@ data/*.txt
 data/clients_report*.json
 .env.bak
 data/tunnel.log
+.deploy/
