@@ -17,6 +17,7 @@ services:
     build: !reset null
     image: nousresearch/hermes-agent:stable
     command: gateway run
+    init: false
     ports: !override []
     mem_limit: 640m
     environment:
