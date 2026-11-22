@@ -1,0 +1,17 @@
+# Private cloud staging: access the app through an SSH tunnel until HTTPS,
+# browser authentication and the telephone webhook are configured.
+services:
+  app:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    environment:
+      - AGENT_API_KEY=${AGENT_API_KEY:?Set a unique AGENT_API_KEY in .env}
+      - TELEPHONY_ENABLED=false
+      - CALLBACK_SIMULATOR_ENABLED=false
+      - TELEPHONY_MODEL_PROFILE=default
+    volumes: !override
+      - ../data:/app/data
+  redis:
+    ports: !override []
+  hermes:
+    ports: !override []

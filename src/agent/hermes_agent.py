@@ -125,11 +125,11 @@ def pop_sentences(buffer: str) -> Tuple[List[str], str]:
 
 
 def pop_speech_chunks(buffer: str) -> Tuple[List[str], str]:
-    """Отдать первую естественную паузу раньше конца длинного предложения."""
+    """Отдать законченную фразу; длинную мысль можно разделить по запятой."""
     ready: List[str] = []
     while buffer:
         sentence = SENTENCE_END.search(buffer)
-        comma = next((match for match in re.finditer(r"[,;:]\s+", buffer) if match.start() >= 28), None)
+        comma = next((match for match in re.finditer(r"[,;:]\s+", buffer) if match.start() >= 90), None)
         boundary = None
         if sentence:
             boundary = sentence.end()

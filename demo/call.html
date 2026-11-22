@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Звонок · КлиматПлюс</title>
+    <title>Голосовой консультант</title>
     <style>
       :root {
         --color-page: #f6f5f3;
@@ -759,7 +759,7 @@
       <section class="card" role="dialog" aria-label="Звонок голосовому помощнику">
         <header class="card-head">
           <div>
-            <div class="who-name" id="whoName">Вера · КлиматПлюс</div>
+            <div class="who-name" id="whoName">Голосовой консультант</div>
             <div class="who-sub" id="whoSub">ИИ-ассистент поддержки</div>
           </div>
           <div class="head-actions">
@@ -795,7 +795,7 @@
         </div>
 
         <div class="chat" id="chat" role="log" aria-live="polite" aria-label="Диалог">
-          <div class="chat-msg from-agent" id="welcomeMsg">Здравствуйте! Я Вера из «КлиматПлюс». Спросите про установку или обслуживание: голосом или текстом.</div>
+          <div class="chat-msg from-agent" id="welcomeMsg">Здравствуйте! Расскажите, чем помочь.</div>
         </div>
 
         <div class="notice" id="notice" hidden></div>
@@ -1009,6 +1009,7 @@
           const t = await response.json();
           agentName = t.agent_name;
           const name = t.company ? t.agent_name + " · " + t.company : t.agent_name;
+          document.title = "Звонок · " + (t.company || t.agent_name);
           $("whoName").textContent = name;
           $("whoSub").textContent = t.subtitle;
           $("welcomeMsg").textContent = t.welcome;
@@ -1379,13 +1380,13 @@
         }
       }
 
-      async function speak(activeCall, text, { interruptible = true } = {}) {
+      async function speak(activeCall, text, { interruptible = true, prefetched = null } = {}) {
         const chunks = splitForSpeech(text);
         activeCall.interrupted = false;
         if (interruptible) startBargeIn(activeCall, text);
         try {
           // следующий кусок заказываем заранее, пока играет текущий — без пауз между фразами
-          let pending = activeCall.voice === "server" ? fetchSpeech(activeCall, chunks[0]) : null;
+          let pending = activeCall.voice === "server" ? (prefetched || fetchSpeech(activeCall, chunks[0])) : null;
           for (let i = 0; i < chunks.length; i++) {
             if (!isActive(activeCall) || activeCall.interrupted) return;
             const buffer = pending ? await pending : null;
@@ -1737,7 +1738,7 @@
               if (!line.trim()) continue;
               const event = JSON.parse(line);
               if (event.type === "sentence") {
-                await onSentence(event.text);
+                onSentence(event.text);
                 if (activeCall.interrupted || !isActive(activeCall)) {
                   controller.abort();
                   return { interrupted: true };
@@ -1765,13 +1766,19 @@
         setPhase("thinking");
 
         let spokenText = "";
-        const result = await requestAgentEvents(activeCall, text, async (sentence) => {
+        let playback = Promise.resolve();
+        const result = await requestAgentEvents(activeCall, text, (sentence) => {
           if (!isActive(activeCall)) return;
           spokenText += (spokenText ? " " : "") + sentence;
-          showCaption(agentName, sentence);
-          setPhase("speaking");
-          await speak(activeCall, sentence);
+          const audio = fetchSpeech(activeCall, sentence);
+          playback = playback.then(async () => {
+            if (!isActive(activeCall) || activeCall.interrupted) return;
+            showCaption(agentName, sentence);
+            setPhase("speaking");
+            await speak(activeCall, sentence, { prefetched: audio });
+          });
         });
+        await playback;
         if (!isActive(activeCall)) return;
         if (result.interrupted) return;
         if (result.fatal) {

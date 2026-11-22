@@ -7,12 +7,19 @@ from src.agent.hermes_agent import pop_speech_chunks
 from src.main import app
 
 
-def test_speech_chunks_release_a_clause_before_sentence_end():
+def test_speech_chunks_keep_short_clause_together():
     chunks, remainder = pop_speech_chunks(
         "Для спальни стоит проверить уровень шума и расположение кровати, чтобы подобрать модель."
     )
-    assert chunks == ["Для спальни стоит проверить уровень шума и расположение кровати,"]
-    assert remainder == "чтобы подобрать модель."
+    assert chunks == []
+    assert remainder == "Для спальни стоит проверить уровень шума и расположение кровати, чтобы подобрать модель."
+
+
+def test_speech_chunks_release_long_clause():
+    text = "На Камчатке программа зависит от сезона, погоды, местного транспорта и доступности маршрутов по вулканам и побережью, поэтому точный план поездки лучше уточнить у менеджера."
+    chunks, remainder = pop_speech_chunks(text)
+    assert chunks == ["На Камчатке программа зависит от сезона, погоды, местного транспорта и доступности маршрутов по вулканам и побережью,"]
+    assert remainder == "поэтому точный план поездки лучше уточнить у менеджера."
 
 
 def test_dialog_events_preserve_sentence_order_and_done(monkeypatch):
