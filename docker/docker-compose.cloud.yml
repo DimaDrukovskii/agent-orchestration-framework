@@ -14,10 +14,14 @@ services:
   redis:
     ports: !override []
   hermes:
+    build: !reset null
+    image: nousresearch/hermes-agent:stable
+    command: gateway run
     ports: !override []
     mem_limit: 640m
     environment:
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
       - API_SERVER_KEY=${HERMES_API_KEY:?Set a unique HERMES_API_KEY in .env}
-      - HERMES_MCP_CONFIG=
     volumes: !override
-      - hermes_data:/home/hermes/.hermes
+      - hermes_data:/opt/data
