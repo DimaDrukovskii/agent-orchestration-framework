@@ -4,6 +4,7 @@ import secrets
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from websockets.exceptions import ConnectionClosed
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from src.api.auth import verify_api_key, verify_manager_key
@@ -72,7 +73,7 @@ async def connect(ws: WebSocket):
             peer = room.manager if role == "caller" else room.caller
             if peer:
                 await asyncio.wait_for(peer.send_bytes(frame), 3)
-    except (WebSocketDisconnect, HTTPException, TimeoutError, RuntimeError, ValueError, TypeError, AttributeError):
+    except (ConnectionClosed, WebSocketDisconnect, HTTPException, TimeoutError, RuntimeError, ValueError, TypeError, AttributeError):
         pass
     finally:
         if room and rooms.pop(key, None):
@@ -80,9 +81,9 @@ async def connect(ws: WebSocket):
             if peer:
                 try:
                     await peer.close()
-                except (WebSocketDisconnect, RuntimeError):
+                except (ConnectionClosed, WebSocketDisconnect, RuntimeError):
                     pass
         try:
             await ws.close()
-        except (WebSocketDisconnect, RuntimeError):
+        except (ConnectionClosed, WebSocketDisconnect, RuntimeError):
             pass
