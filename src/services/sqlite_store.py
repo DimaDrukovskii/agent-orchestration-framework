@@ -50,6 +50,45 @@ CREATE TABLE IF NOT EXISTS handoff_cards (
     comment TEXT
 );
 CREATE INDEX IF NOT EXISTS handoff_cards_call_id_idx ON handoff_cards(call_id);
+CREATE TABLE IF NOT EXISTS handoff_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id TEXT NOT NULL,
+    card_json TEXT NOT NULL,
+    legacy_row_id INTEGER UNIQUE,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS delivery_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT UNIQUE NOT NULL,
+    call_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    available_at REAL NOT NULL DEFAULT 0,
+    lease_until REAL NOT NULL DEFAULT 0,
+    owner TEXT,
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    delivered_at REAL
+);
+CREATE INDEX IF NOT EXISTS delivery_outbox_due_idx ON delivery_outbox(status, available_at);
+CREATE TABLE IF NOT EXISTS service_requests (
+    call_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'new',
+    assigned_to TEXT,
+    result TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS service_request_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    manager TEXT,
+    result TEXT,
+    created_at REAL NOT NULL
+);
 """
 
 HANDOFF_COLUMNS = ("name", "need", "budget", "urgency", "contact_phone", "comment")
@@ -92,8 +131,22 @@ def init_db(path: str) -> str:
                     raise
                 time.sleep(0.025)
         conn.executescript(_SCHEMA)
-        conn.execute("DELETE FROM handoff_cards WHERE id NOT IN (SELECT MAX(id) FROM handoff_cards GROUP BY call_id)")
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS handoff_cards_one_per_call_idx ON handoff_cards(call_id)")
+        has_index = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name='handoff_cards_one_per_call_idx'"
+        ).fetchone()
+        if not has_index:
+            # Preserve legacy duplicates before applying the one-card-per-call index.
+            duplicates = conn.execute(
+                "SELECT * FROM handoff_cards WHERE call_id IN "
+                "(SELECT call_id FROM handoff_cards GROUP BY call_id HAVING COUNT(*) > 1)"
+            ).fetchall()
+            for row in duplicates:
+                conn.execute(
+                    "INSERT OR IGNORE INTO handoff_revisions (call_id, card_json, legacy_row_id) VALUES (?, ?, ?)",
+                    (row['call_id'], json.dumps(dict(row), ensure_ascii=False), row['id']),
+                )
+            conn.execute("DELETE FROM handoff_cards WHERE id NOT IN (SELECT MAX(id) FROM handoff_cards GROUP BY call_id)")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS handoff_cards_one_per_call_idx ON handoff_cards(call_id)")
     return full_path
 
 
@@ -208,20 +261,84 @@ class SqliteStorage:
         return await asyncio.to_thread(op)
 
     async def save_handoff_card(self, call_id: str, card: dict) -> dict:
-        """Карточка для менеджера: в запись попадают только колонки карточки, отсутствующие поля — NULL."""
+        """Patch supplied nonblank fields; retain earlier facts and immutable revisions."""
         def op():
             with _db(self.path) as conn:
-                conn.execute(
-                    "INSERT INTO handoff_cards (call_id, name, need, budget, urgency, contact_phone, comment) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(call_id) DO UPDATE SET "
-                    "name = excluded.name, need = excluded.need, budget = excluded.budget, "
-                    "urgency = excluded.urgency, contact_phone = excluded.contact_phone, comment = excluded.comment",
-                    (call_id, *(card.get(c) or None for c in HANDOFF_COLUMNS)),
-                )
-                row = conn.execute("SELECT * FROM handoff_cards WHERE call_id = ?", (call_id,)).fetchone()
-                return dict(row)
+                conn.execute("BEGIN IMMEDIATE")
+                return self._save_card(conn, call_id, card)
 
+        return await asyncio.to_thread(op)
+
+    def _save_card(self, conn: sqlite3.Connection, call_id: str, card: dict) -> dict:
+        previous = conn.execute("SELECT * FROM handoff_cards WHERE call_id = ?", (call_id,)).fetchone()
+        merged = {c: previous[c] if previous else None for c in HANDOFF_COLUMNS}
+        merged.update({c: str(card[c]).strip() for c in HANDOFF_COLUMNS
+                       if card.get(c) is not None and str(card[c]).strip()})
+        conn.execute(
+            "INSERT INTO handoff_cards (call_id, name, need, budget, urgency, contact_phone, comment) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(call_id) DO UPDATE SET "
+            "name=excluded.name, need=excluded.need, budget=excluded.budget, "
+            "urgency=excluded.urgency, contact_phone=excluded.contact_phone, comment=excluded.comment",
+            (call_id, *(merged[c] for c in HANDOFF_COLUMNS)),
+        )
+        if previous is None or any(previous[c] != merged[c] for c in HANDOFF_COLUMNS):
+            conn.execute(
+                "INSERT INTO handoff_revisions (call_id, card_json) VALUES (?, ?)",
+                (call_id, json.dumps(merged, ensure_ascii=False)),
+            )
+        return dict(conn.execute("SELECT * FROM handoff_cards WHERE call_id = ?", (call_id,)).fetchone())
+
+    async def save_turn(self, call_id: str, caller_phone: str, transcript: str,
+                        agent_response: str, action: str, card: Optional[dict] = None,
+                        notification: Optional[dict] = None) -> dict:
+        """Commit call, card, audit and manager notification in one transaction."""
+        def op():
+            with _db(self.path) as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute(
+                    "INSERT INTO calls (call_id, caller_phone, transcript, agent_response, action) "
+                    "VALUES (?, ?, ?, ?, ?) ON CONFLICT(call_id) DO UPDATE SET "
+                    "caller_phone=excluded.caller_phone, transcript=excluded.transcript, "
+                    "agent_response=excluded.agent_response, action=excluded.action, updated_at=datetime('now')",
+                    (call_id, caller_phone, transcript, agent_response, action),
+                )
+                changed_card = False
+                if card:
+                    previous = conn.execute('SELECT * FROM handoff_cards WHERE call_id=?', (call_id,)).fetchone()
+                    saved = self._save_card(conn, call_id, card)
+                    changed_card = previous is None or any(previous[c] != saved[c] for c in HANDOFF_COLUMNS)
+                if notification:
+                    event_key = notification['event_key']
+                    if card:
+                        revision = conn.execute(
+                            'SELECT MAX(id) FROM handoff_revisions WHERE call_id=?', (call_id,),
+                        ).fetchone()[0]
+                        event_key += f':revision:{revision}'
+                    cursor = conn.execute(
+                        "INSERT OR IGNORE INTO service_requests (call_id, created_at, updated_at) VALUES (?, ?, ?)",
+                        (call_id, time.time(), time.time()),
+                    )
+                    if cursor.rowcount:
+                        conn.execute(
+                            "INSERT INTO service_request_events (call_id, status, created_at) VALUES (?, 'new', ?)",
+                            (call_id, time.time()),
+                        )
+                    elif changed_card:
+                        reopened = conn.execute(
+                            "UPDATE service_requests SET status='new', assigned_to=NULL, result=NULL, updated_at=? "
+                            "WHERE call_id=? AND status='completed'", (time.time(), call_id),
+                        )
+                        if reopened.rowcount:
+                            conn.execute(
+                                "INSERT INTO service_request_events (call_id,status,result,created_at) "
+                                "VALUES (?, 'new', 'Клиент уточнил завершённую заявку', ?)", (call_id, time.time()),
+                            )
+                    conn.execute(
+                        "INSERT OR IGNORE INTO delivery_outbox "
+                        "(event_key, call_id, chat_id, message, created_at) VALUES (?, ?, ?, ?, ?)",
+                        (event_key, call_id, notification['chat_id'], notification['message'], time.time()),
+                    )
+                return self._fetch_call(conn, call_id)
         return await asyncio.to_thread(op)
 
     async def get_handoff_cards(self, call_id: str) -> List[dict]:

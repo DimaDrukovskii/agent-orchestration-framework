@@ -1,9 +1,13 @@
 from typing import Literal
 
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
+    tts_speed: float = Field(default=1.15, ge=0.7, le=1.2)
+    # Private manager access; must never be embedded in the public voice widget.
+    manager_api_key: str = ""
     # LLM-провайдер для Hermes: "anthropic" (прямой Claude API) или
     # "polza" (OpenAI-совместимый шлюз polza.ai — для РФ/СНГ-биллинга без
     # прямого доступа к Anthropic). Переключает src/agent/hermes_agent.py.

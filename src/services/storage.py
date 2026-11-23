@@ -21,6 +21,22 @@ class StorageService:
             )
         else:
             raise ValueError(f"Неизвестный STORAGE_BACKEND: {settings.storage_backend}")
+
+    async def save_turn(self, call_id: str, caller_phone: str, transcript: str,
+                        agent_response: str, action: str, card: Optional[dict] = None,
+                        notification: Optional[dict] = None) -> dict:
+        if self._sqlite:
+            return await self._sqlite.save_turn(
+                call_id, caller_phone, transcript, agent_response, action, card, notification,
+            )
+        # Supabase needs a server-side transaction to offer the same atomic guarantee.
+        result = await self.upsert_call(call_id, caller_phone, transcript, agent_response, action)
+        if card:
+            await self.save_handoff_card(call_id, card)
+        if notification:
+            from src.services.delivery import DeliveryOutbox
+            await DeliveryOutbox().enqueue(call_id, notification)
+        return result
     
     async def save_call(
         self,
@@ -101,7 +117,11 @@ class StorageService:
             if self._sqlite:
                 return await self._sqlite.save_handoff_card(call_id, card)
 
-            data = {"call_id": call_id, **{k: v for k, v in card.items() if k in HANDOFF_COLUMNS and v}}
+            previous = await self.get_handoff_cards(call_id)
+            merged = {k: previous[-1].get(k) for k in HANDOFF_COLUMNS} if previous else {}
+            merged.update({k: str(v).strip() for k, v in card.items()
+                           if k in HANDOFF_COLUMNS and v is not None and str(v).strip()})
+            data = {"call_id": call_id, **merged}
             response = await asyncio.to_thread(
                 lambda: self.client.table("handoff_cards").insert(data).execute()
             )

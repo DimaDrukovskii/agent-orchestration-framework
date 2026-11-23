@@ -90,7 +90,8 @@ class TTSService:
         if self.provider == "none":
             return None
         text = prepare_for_speech(text, settings.tts_stress_marks)
-        key = (self.provider, settings.tts_model, settings.tts_voice_id, text)
+        key = (self.provider, settings.tts_model, settings.tts_voice_id,
+               settings.tts_speed, settings.tts_stability, settings.tts_similarity, text)
         cached = self._cache.get(key)
         if cached is not None:
             self._cache.move_to_end(key)
@@ -144,6 +145,12 @@ class TTSService:
     async def _synthesize_elevenlabs(self, text: str) -> bytes:
         return b"".join([chunk async for chunk in self._elevenlabs_audio(text, "mp3_44100_128")])
 
+    async def stream_browser_pcm(self, text: str) -> AsyncIterator[bytes]:
+        text = prepare_for_speech(text, settings.tts_stress_marks)
+        async with aclosing(self._elevenlabs_audio(text, "pcm_24000")) as chunks:
+            async for chunk in chunks:
+                yield chunk
+
     async def stream_elevenlabs_mulaw(self, text: str) -> AsyncIterator[bytes]:
         """Выдавать телефонные кадры G.711 по мере их получения от провайдера."""
         text = prepare_for_speech(text, settings.tts_stress_marks)
@@ -165,6 +172,7 @@ class TTSService:
             "voice_settings": {
                 "stability": settings.tts_stability,
                 "similarity_boost": settings.tts_similarity,
+                "speed": settings.tts_speed,
             },
         }
         async with httpx.AsyncClient(timeout=15) as client:

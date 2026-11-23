@@ -7,7 +7,8 @@ def cfg(**kw):
     base = dict(llm_provider="polza", polza_api_key="k", polza_model="anthropic/claude-haiku-5.5", anthropic_api_key="",
                 openrouter_api_key="", openrouter_model="openai/gpt-4.1-mini",
                 tts_provider="polza", tts_api_key="", tts_voice_id="Sarah", tts_model="", stt_model="openai/gpt-4o-transcribe",
-                tenant="mts", agent_api_key="secret-123", telephony_enabled=False, public_base_url="", twilio_auth_token="")
+                tenant="mts", agent_api_key="secret-123", telephony_enabled=False, public_base_url="", twilio_auth_token="",
+                storage_backend="sqlite", telegram_bot_token="", telegram_chat_id="", manager_api_key="")
     base.update(kw)
     return SimpleNamespace(**base)
 

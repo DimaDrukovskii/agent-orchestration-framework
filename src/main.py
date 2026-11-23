@@ -10,6 +10,7 @@ from src.api import stt_routes
 from src.api import tenant_routes
 from src.api import analytics_routes, callback_routes, simulator_routes
 from src.api import ready_routes
+from src.api import service_routes
 from src.telephony import asterisk, routes as telephony_routes
 from src.config import non_chat_model, settings
 from src.utils import logger
@@ -46,6 +47,9 @@ app.include_router(analytics_routes.router, prefix="/api")
 app.include_router(callback_routes.router, prefix="/api")
 app.include_router(simulator_routes.router, prefix="/api")
 app.include_router(ready_routes.router)  # GET /ready: что настроено, чего не хватает
+from src.api import live_calls
+app.include_router(live_calls.router, prefix="/api")
+app.include_router(service_routes.router, prefix="/api")
 app.include_router(telephony_routes.router)  # Twilio: свои адреса /telephony/twilio/*, авторизация по подписи Twilio
 app.include_router(asterisk.router)
 
@@ -66,6 +70,22 @@ async def start_callbacks():
         app.state.callback_worker = asyncio.create_task(callback_routes.run_worker())
 
 
+@app.on_event("startup")
+async def start_delivery():
+    from src.services.delivery import run_worker
+    app.state.delivery_worker = asyncio.create_task(run_worker())
+
+
+@app.on_event("shutdown")
+async def stop_delivery():
+    task = getattr(app.state, "delivery_worker", None)
+    if task is not None:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+    app.state.delivery_worker = None
+
+
 @app.on_event("shutdown")
 async def stop_callbacks():
     task = getattr(app.state, "callback_worker", None)
@@ -77,6 +97,10 @@ async def stop_callbacks():
 
 @app.get("/health")
 async def health_check(response: Response):
+    delivery = getattr(app.state, "delivery_worker", None)
+    if delivery is not None and delivery.done():
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"status": "degraded", "component": "delivery_worker"}
     worker = getattr(app.state, "callback_worker", None)
     if settings.callback_simulator_enabled and (worker is None or worker.done()):
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

@@ -14,6 +14,7 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from src.config import settings
+from src.services.spoken_numbers import normalize_phone_sequences
 from src.services.analytics import analytics
 from src.utils import logger
 
@@ -68,7 +69,7 @@ class STTService:
             raise
         usage = body.get("usage") or {}
         result = {
-            "text": (body.get("text") or "").strip(),
+            "text": normalize_phone_sequences((body.get("text") or "").strip()),
             "model": model,
             "duration": body.get("duration") or usage.get("durationSeconds"),
             "cost_rub": usage.get("cost_rub"),

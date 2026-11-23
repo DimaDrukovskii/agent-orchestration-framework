@@ -7,11 +7,14 @@ run_turn(): история сессии из кэша -> агент (модел�
 """
 
 import asyncio
+import re
+from contextlib import aclosing
 from typing import Any, Dict, List, Optional
 
 from src.agent.hermes_agent import HermesAgent
 from src.agent.tools import CALLER_PHONE_MARK
 from src.config import settings
+from src.services.session_guard import session_guard
 from src.services.cache import CacheService
 from src.services.qualification import build_card, extract_facts
 from src.tenant import tenant_dir
@@ -31,6 +34,26 @@ def agent_for(model_profile: Optional[str]) -> HermesAgent:
 cache = CacheService()
 
 SESSION_TTL = settings.hermes_session_ttl_seconds
+SAVE_FAILED_REPLY = (
+    "Пока не удалось подтвердить сохранение вашего запроса. "
+    "Пожалуйста, не считайте заявку принятой: попробуйте отправить её ещё раз."
+)
+_GREETING_PREFIX = re.compile(
+    r'^\s*(?:(?:здравствуйте|здравствуй|привет(?:ствую)?|доброе\s+утро|добрый\s+(?:день|вечер))\b[!.,:;\s—-]*)+',
+    re.IGNORECASE,
+)
+
+
+def _without_greeting(text: str) -> str:
+    return _GREETING_PREFIX.sub('', text).strip()
+
+
+def _normalize_reply(result: dict) -> None:
+    result['response'] = _without_greeting(result['response']) or 'Слушаю вас.'
+    for message in reversed(result['messages']):
+        if message.get('role') == 'assistant' and isinstance(message.get('content'), str) and not message.get('tool_calls'):
+            message['content'] = _without_greeting(message['content']) or 'Слушаю вас.'
+            break
 
 
 def _session_key(session_id: str) -> str:
@@ -149,6 +172,35 @@ def with_caller_phone(card: Dict[str, str], caller_phone: str) -> Dict[str, str]
     return {**card, "contact_phone": caller_phone}
 
 
+def _channel_context(extra: dict, caller_phone: str) -> dict:
+    if not caller_phone:
+        return {**extra, 'notes': extra.get('notes', '') +
+                '\nКанал сайта: прямого телефонного перевода нет; транспорт не передаёт номер посетителя. '
+                'Для обратного звонка используй продиктованный посетителем номер или спроси его, если ещё нет. '
+                'Не используй «номер звонящего». '
+                'Оформляй заявку менеджеру и не говори «соединяю».'}
+    return extra
+
+
+def _browser_handoff(result: dict, caller_phone: str) -> bool:
+    if caller_phone or not result['pending_transfer']:
+        return False
+    contact = (result.get('handoff_card') or {}).get('contact_phone', '')
+    result['response'] = ('Ваш запрос сохранён для менеджера. Контакт для связи указан в заявке.'
+                          if sum(c.isdigit() for c in contact) >= 7
+                          else 'Чтобы менеджер мог вам перезвонить, подскажите контактный номер.')
+    _replace_final_response(result, result['response'])
+    return True
+
+
+def _replace_final_response(result: dict, response: str) -> None:
+    result['response'] = response
+    for message in reversed(result['messages']):
+        if message.get('role') == 'assistant' and isinstance(message.get('content'), str) and not message.get('tool_calls'):
+            message['content'] = result['response']
+            break
+
+
 async def _persist_turn(
     session_id: str,
     caller_phone: str,
@@ -167,47 +219,47 @@ async def _persist_turn(
     persisted = True
     try:
         from src.services.storage import StorageService
+        from src.services.delivery import DeliveryOutbox
         storage = StorageService()
-        await storage.upsert_call(
+        card = with_caller_phone(handoff_card, caller_phone) if handoff_card else None
+        if card and not caller_phone and sum(c.isdigit() for c in card.get('contact_phone', '')) < 7:
+            raise ValueError('callback_contact_missing')
+        notification = None
+        if pending_transfer or card:
+            message = f"Обращение {session_id}. "
+            if pending_transfer:
+                message += (f"Запрошен перевод на {pending_transfer.get('department', '?')}: "
+                            f"{pending_transfer.get('reason', '')}. ")
+            if card:
+                message += "Карточка сохранена. " + "; ".join(f"{k}: {v}" for k, v in card.items())
+            notification = DeliveryOutbox.notification(session_id, message)
+        await storage.save_turn(
             call_id=session_id,
             caller_phone=caller_phone,
             transcript=_extract_transcript(messages),
             agent_response=agent_response,
-            action="transfer" if pending_transfer else "in_progress"
+            action="transfer" if pending_transfer else "in_progress",
+            card=card,
+            notification=notification,
         )
-        if handoff_card:
-            await storage.save_handoff_card(session_id, with_caller_phone(handoff_card, caller_phone))
     except Exception as e:
         persisted = False
         logger.error(f"[{session_id}] Hermes persist error: {str(e)}")
-
-    if pending_transfer:
-        try:
-            from src.services.telegram import send_message
-            await send_message(
-                settings.telegram_chat_id,
-                f"Звонок от {mask_phone(caller_phone)} переведён на "
-                f"{pending_transfer.get('department', '?')}: {pending_transfer.get('reason', '')}",
-            )
-        except Exception as e:
-            logger.error(f"[{session_id}] Telegram notify error: {str(e)}")
 
     return persisted
 
 
 async def _deliver_chat(session_id: str, messages: List[str]) -> None:
     """Доставить сообщения чата во внешний канал. Новый канал — ещё одна ветка здесь."""
-    if not messages or not settings.telegram_chat_id:
+    if not messages:
         return
-    try:
-        from src.services.telegram import send_message
-        for text in messages:
-            await send_message(settings.telegram_chat_id, text)
-    except Exception as e:
-        logger.error(f"[{session_id}] Chat delivery error: {type(e).__name__}")
+    from src.services.delivery import DeliveryOutbox
+    outbox = DeliveryOutbox()
+    for text in messages:
+        await outbox.enqueue(session_id, outbox.notification(session_id, text, category="chat"))
 
 
-async def finalize_call(session_id: str, caller_phone: str) -> Dict[str, Any]:
+async def _finalize_call(session_id: str, caller_phone: str) -> Dict[str, Any]:
     """Persist a conservative result once the phone transport has actually ended."""
     from src.services.storage import StorageService
 
@@ -266,7 +318,7 @@ async def finalize_call(session_id: str, caller_phone: str) -> Dict[str, Any]:
     return result
 
 
-async def run_turn(
+async def _run_turn(
     session_id: str,
     caller_phone: str,
     user_message: str,
@@ -276,8 +328,11 @@ async def run_turn(
     history = await _get_session(session_id)
     history.append({"role": "user", "content": user_message})
     extra = {k: v for k, v in (await _notes_for_turn(session_id)).items() if v}
+    extra = _channel_context(extra, caller_phone)
 
     result = await agent_for(model_profile).run(messages=history, caller_phone=caller_phone, **extra)
+    _normalize_reply(result)
+    _browser_handoff(result, caller_phone)
 
     await _save_session(session_id, caller_phone, result["messages"])
     _schedule_notes(session_id, result["messages"])
@@ -289,13 +344,16 @@ async def run_turn(
         pending_transfer=result["pending_transfer"],
         handoff_card=result.get("handoff_card"),
     )
+    if not persisted and (result.get("handoff_card") or result["pending_transfer"]):
+        _replace_final_response(result, SAVE_FAILED_REPLY)
+        await _save_session(session_id, caller_phone, result['messages'])
 
     chat = result.get("chat", [])
     await _deliver_chat(session_id, chat)
 
     return {
         "response": result["response"],
-        "transfer": result["pending_transfer"],
+        "transfer": result["pending_transfer"] if caller_phone else None,
         "handoff_card": result.get("handoff_card"),
         "chat": chat,
         "links": result.get("links", []),
@@ -306,7 +364,7 @@ async def run_turn(
 INTERRUPT_MARK = " [абонент перебил]"
 
 
-async def run_turn_stream(
+async def _run_turn_stream(
     session_id: str,
     caller_phone: str,
     user_message: str,
@@ -321,11 +379,36 @@ async def run_turn_stream(
     history = await _get_session(session_id)
     history.append({"role": "user", "content": user_message})
     extra = {k: v for k, v in (await _notes_for_turn(session_id)).items() if v}
+    extra = _channel_context(extra, caller_phone)
+    if not caller_phone:
+        # Preserve the caller’s facts if browser playback is interrupted before done.
+        await _save_session(session_id, caller_phone, history)
+    awaiting_handoff = False
+    buffered_sentences = []
+    reply_started = False
     async for event in agent_for(model_profile).run_stream(history, caller_phone, **extra):
         if event["type"] != "done":
+            if event['type'] == 'sentence' and not reply_started:
+                text = _without_greeting(event['text'])
+                if not text:
+                    continue
+                event = {**event, 'text': text}
+                reply_started = True
+            if event["type"] == "tool" and (event.get("name") == "save_handoff_card" or
+                                            (not caller_phone and event.get("name") == "transfer_to_department")):
+                awaiting_handoff = True
+            if awaiting_handoff and event["type"] == "sentence":
+                buffered_sentences.append(event)
+                continue
             yield event
             continue
         result = event["result"]
+        _normalize_reply(result)
+        if not reply_started:
+            buffered_sentences = [{'type': 'sentence', 'text': result['response']}]
+        browser_handoff = _browser_handoff(result, caller_phone)
+        if browser_handoff:
+            buffered_sentences = [{"type": "sentence", "text": result['response']}]
         await _save_session(session_id, caller_phone, result["messages"])
         _schedule_notes(session_id, result["messages"])
         persisted = await _persist_turn(
@@ -336,12 +419,19 @@ async def run_turn_stream(
             pending_transfer=result["pending_transfer"],
             handoff_card=result.get("handoff_card"),
         )
+        if not persisted and (result.get("handoff_card") or result["pending_transfer"]):
+            _replace_final_response(result, SAVE_FAILED_REPLY)
+            await _save_session(session_id, caller_phone, result['messages'])
+            yield {"type": "sentence", "text": SAVE_FAILED_REPLY}
+        else:
+            for sentence in buffered_sentences:
+                yield sentence
         chat = result.get("chat", [])
         await _deliver_chat(session_id, chat)
         yield {
             "type": "done",
             "response": result["response"],
-            "transfer": result["pending_transfer"],
+            "transfer": result["pending_transfer"] if caller_phone else None,
             "handoff_card": result.get("handoff_card"),
             "chat": chat,
             "links": result.get("links", []),
@@ -349,7 +439,7 @@ async def run_turn_stream(
         }
 
 
-async def mark_interrupted(
+async def _mark_interrupted(
     session_id: str, caller_phone: str, user_message: str, spoken: str, committed: bool
 ) -> None:
     """
@@ -371,3 +461,25 @@ async def mark_interrupted(
     else:
         return
     await _save_session(session_id, caller_phone, history)
+
+
+async def run_turn(session_id: str, caller_phone: str, user_message: str, model_profile: Optional[str] = None):
+    async with session_guard(session_id):
+        return await _run_turn(session_id, caller_phone, user_message, model_profile)
+
+
+async def run_turn_stream(session_id: str, caller_phone: str, user_message: str, model_profile: Optional[str] = None):
+    async with session_guard(session_id):
+        async with aclosing(_run_turn_stream(session_id, caller_phone, user_message, model_profile)) as events:
+            async for event in events:
+                yield event
+
+
+async def mark_interrupted(session_id: str, caller_phone: str, user_message: str, spoken: str, committed: bool):
+    async with session_guard(session_id):
+        await _mark_interrupted(session_id, caller_phone, user_message, spoken, committed)
+
+
+async def finalize_call(session_id: str, caller_phone: str):
+    async with session_guard(session_id):
+        return await _finalize_call(session_id, caller_phone)

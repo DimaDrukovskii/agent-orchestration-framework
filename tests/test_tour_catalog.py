@@ -13,7 +13,7 @@ def test_market_offer_has_attribution_and_rubles(monkeypatch, tmp_path):
     monkeypatch.setattr(tour_catalog, "_path", lambda: tmp_path / "catalog.db")
     tours = search_market_tours("Сикачи-Алян петроглифы")
     assert tours[0]["price_rub"] == 6550
-    context = market_context("Сикачи-Алян", today=date(2026, 11, 22))
+    context = market_context("Сикачи-Алян", today=date(2026, 11, 23))
     assert "6 550 ₽" in context
     assert "dvtravel.ru" in context
     assert "не наши туры" in context
@@ -45,7 +45,7 @@ def test_expired_or_stale_price_is_not_quoted(monkeypatch, tmp_path):
 
     monkeypatch.setattr(tour_catalog, "tenant_dir", lambda: tour_catalog.Path(__file__).parents[1] / "tenants/far_east_travel")
     monkeypatch.setattr(tour_catalog, "_path", lambda: tmp_path / "catalog.db")
-    context = market_context("Шантарские острова", today=date(2027, 1, 1))
+    context = market_context("Сикачи-Алян", today=date(2027, 1, 1))
     assert "цена требует повторной проверки" in context
-    assert "335 000 ₽" not in context
-    assert "russiadiscovery.ru" in context
+    assert "6 550 ₽" not in context
+    assert "dvtravel.ru" in context

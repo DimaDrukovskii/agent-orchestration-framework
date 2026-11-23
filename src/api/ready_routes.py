@@ -86,6 +86,18 @@ def build_report(cfg: Any = settings) -> Dict[str, Any]:
         else:
             checks.append(_check("телефон", OK, f"Twilio, вебхук {cfg.public_base_url.rstrip('/')}/telephony/twilio/voice"))
 
+    if not cfg.manager_api_key or cfg.manager_api_key == cfg.agent_api_key:
+        checks.append(_check("панель менеджера", WARN,
+                             "нет отдельного ключа доступа: внутренняя панель закрыта",
+                             "задайте MANAGER_API_KEY, отличный от ключа публичного виджета"))
+    if cfg.storage_backend != 'sqlite':
+        checks.append(_check("контроль заявок", WARN,
+                             "Текущий менеджерский процесс и атомарное сохранение реализованы для SQLite",
+                             "перед коммерческим запуском перенесите транзакцию заявок и очереди на выбранную БД"))
+    if not (cfg.telegram_bot_token and cfg.telegram_chat_id):
+        checks.append(_check("уведомления менеджеру", WARN,
+                             "Telegram не настроен: заявки доступны в панели, уведомления будут ждать",
+                             "назначьте менеджера и настройте канал уведомлений"))
     return {"ready": not any(c["status"] == FAIL for c in checks), "checks": checks}
 
 

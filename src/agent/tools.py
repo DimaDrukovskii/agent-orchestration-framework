@@ -107,6 +107,13 @@ TOOLS_SCHEMA = [
 ]
 
 
+if settings.tenant == "far_east_travel":
+    from src.services.travel_lead import TravelLead
+
+    handoff = next(tool for tool in TOOLS_SCHEMA if tool["name"] == "save_handoff_card")
+    handoff["input_schema"]["properties"]["travel"] = TravelLead.model_json_schema()
+
+
 # ---- Реализация инструментов ----
 
 KB_CONTEXT_MAX_CHARS = 1500  # 900 резало вторую выборку: на 50 тестовых абонентах 1500 даёт 31 попадание из 34, 900 только 28
@@ -291,7 +298,8 @@ def save_handoff_card(
     if missing:
         return {"error": "карточка не сохранена, не хватает: " + ", ".join(missing)}
     logger.info(f"save_handoff_card: fields={sorted(card)}")
-    return {"action": "handoff_card", "card": card, "status": "карточка сохранена"}
+    return {"action": "handoff_card", "card": card,
+            "status": "карточка подготовлена; сохранение подтверждается системой в конце хода"}
 
 
 SITE_MAP_PATH = str(tenant_dir() / "site_map.json")
@@ -334,6 +342,23 @@ def show_section(section: str) -> Dict[str, Any]:
     return {"error": "неизвестный раздел"}
 
 
+def _save_manager_card(arguments):
+    fields = {key: arguments.get(key) for key in HANDOFF_FIELDS}
+    if settings.tenant == "far_east_travel" and arguments.get("travel") is not None:
+        from pydantic import ValidationError
+        from src.services.travel_lead import TravelLead
+
+        try:
+            travel = TravelLead.model_validate(arguments["travel"])
+        except ValidationError:
+            return {"error": "Уточните формат данных поездки"}
+        details = travel.card_fields()
+        if isinstance(fields["comment"], str):
+            details["comment"] += ". " + fields["comment"]
+        fields.update(details)
+    return save_handoff_card(**fields)
+
+
 # Диспетчер вызовов
 TOOL_HANDLERS = {
     "show_section": lambda inp: show_section(inp["section"]),
@@ -341,7 +366,7 @@ TOOL_HANDLERS = {
     "search_knowledge_base": lambda inp: search_knowledge_base(inp["query"]),
     "check_account_status": lambda inp: check_account_status(inp["phone"]),
     "transfer_to_department": lambda inp: transfer_to_department(inp["department"], inp["reason"]),
-    "save_handoff_card": lambda inp: save_handoff_card(**{k: inp.get(k) for k in HANDOFF_FIELDS}),
+    "save_handoff_card": _save_manager_card,
 }
 
 
@@ -355,6 +380,8 @@ def tool_enabled(name: str) -> bool:
 
 def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
     """Выполнить tool по имени с входными данными от модели."""
+    if settings.tenant == "far_east_travel" and tool_name not in {"search_knowledge_base", "save_handoff_card", "transfer_to_department"}:
+        return {"error": "Действие недоступно для туристического профиля"}
     if tool_name == "check_account_status" and not tool_enabled(tool_name):
         return {"error": "Инструмент недоступен для этого профиля"}
     handler = TOOL_HANDLERS.get(tool_name)

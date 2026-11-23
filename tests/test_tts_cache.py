@@ -51,6 +51,15 @@ def test_cache_is_bounded(monkeypatch):
     assert len(service._cache) == TTS_CACHE_MAX_ENTRIES
 
 
+def test_changing_speed_does_not_reuse_audio_with_old_pace(monkeypatch):
+    service, calls = make_service(monkeypatch)
+    monkeypatch.setattr(settings, "tts_speed", 1.0)
+    run(service.synthesize("Слушаю вас"))
+    monkeypatch.setattr(settings, "tts_speed", 1.15)
+    run(service.synthesize("Слушаю вас"))
+    assert len(calls) == 2
+
+
 def test_disabled_provider_returns_none_without_upstream(monkeypatch):
     monkeypatch.setattr(settings, "tts_provider", "none")
     service = TTSService()

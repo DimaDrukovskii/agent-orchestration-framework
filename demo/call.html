@@ -746,6 +746,8 @@
     <p class="demo-note">
       Демо звонка. Виджет — в правом нижнем углу.<br />
       <a href="/demo/index.html">← На главную</a>
+      · <a href="/demo/tools/architecture.html">Логика проекта</a>
+      · <a href="/demo/tools/service.html">Контроль обращений</a>
     </p>
 
     <aside class="widget" id="widget" data-open="false" data-phase="idle" data-muted="false" data-level="sim">
@@ -787,7 +789,7 @@
             </button>
           </div>
           <p class="status" id="status">Готовы поговорить?</p>
-          <p class="timer" id="timer"></p>
+          <p class="timer" id="timer"></p><button type="button" id="live-manager" hidden>Позвать менеджера</button>
           <div class="caption" id="caption" hidden>
             <span class="caption-who" id="captionWho"></span>
             <span class="caption-text" id="captionText"></span>
@@ -825,6 +827,7 @@
         </form>
 
         <div class="settings" id="settings" hidden>
+          <div>Пауза до голоса: <output id="turnLatency">—</output></div>
           <div>Голос: <span class="voice-mode" id="voiceMode">проверяю…</span></div>
           <label>
             Модель агента
@@ -842,6 +845,7 @@
       </section>
     </aside>
 
+    <script src="/demo/live-call.js"></script>
     <script>
       "use strict";
 
@@ -852,7 +856,8 @@
       const TTS_URL = "/api/tts";
       const TTS_STATUS_URL = "/api/tts/status";
       const LLM_STATUS_URL = "/api/llm/status";
-      const CALLER_PHONE = "+79990000000";
+      // The browser does not know the visitor's phone; collect it in the conversation.
+      const CALLER_PHONE = "";
       const DEFAULT_API_KEY = "test-local-key";
       const REQUEST_TIMEOUT_MS = 35000;
       const STATUS_TIMEOUT_MS = 4000;
@@ -862,7 +867,8 @@
       const MAX_RECOGNITION_FAILURES = 4;
       const MAX_AGENT_FAILURES = 3;
       const MAX_CHUNK_CHARS = 180; // короткие куски: быстрее первый звук и мягче расход кредитов
-      const BROWSER_SPEECH_RATE = 1.05;
+      const BROWSER_SPEECH_RATE = 1.15;
+      const OPENING_LISTEN_MS = 1000;
       // перебивание: пока Алина говорит, слушаем микрофон; ?barge=0 в адресе — выключить
       const BARGE_IN_ENABLED = new URLSearchParams(location.search).get("barge") !== "0";
       const BARGE_MIN_CHARS = 3;
@@ -878,12 +884,10 @@
       const STT_URL = "/api/stt";
       const STT_STATUS_URL = "/api/stt/status";
       const STT_FORCE_BROWSER = new URLSearchParams(location.search).get("stt") === "browser";
-      const VAD_CALIBRATE_MS = 500; // фон меряем в начале звонка, порог = фон * VAD_FACTOR
       const VAD_MIN_LEVEL = 0.012;
       const VAD_FACTOR = 2.5;
-      const VAD_HOLD_MS = 350; // ворота закрываются не сразу, чтобы не резать концы слов
       const VAD_POLL_MS = 30;
-      const VAD_END_SILENCE_MS = 900; // столько тишины после речи = фраза закончена
+      const VAD_END_SILENCE_MS = 700; // столько тишины после речи = фраза закончена
       const VAD_MIN_SPEECH_MS = 300; // короче — кашель или щелчок, не отправляем
       const VAD_MAX_UTTERANCE_MS = 20000;
       const VAD_IDLE_RESTART_MS = 15000; // долго молчат — перезапускаем запись, чтобы она не росла
@@ -942,6 +946,7 @@
       let voices = [];
       let selectedVoiceURI = storeGet("voice_agent_call_voice");
       let serverVoiceAvailable = false;
+      let streamPcm = false;
       let modelConfigured = false;
       let modelProvider = "polza";
       const MODEL_PROFILES = ["default"];
@@ -1093,7 +1098,9 @@
         const timeout = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
         try {
           const response = await fetch(TTS_STATUS_URL, { headers: apiHeaders(), signal: controller.signal });
-          serverVoiceAvailable = response.ok && (await response.json()).enabled === true;
+          const status = response.ok ? await response.json() : {};
+          serverVoiceAvailable = status.enabled === true;
+          streamPcm = serverVoiceAvailable && status.provider === "elevenlabs";
         } catch (e) {
           serverVoiceAvailable = false;
         } finally {
@@ -1195,18 +1202,84 @@
       // Серверный голос обязателен: не подменяем его синтезатором браузера.
       async function fetchSpeech(activeCall, chunk) {
         try {
-          const response = await fetch(TTS_URL, {
+          const response = await fetch(streamPcm ? TTS_URL + "/pcm" : TTS_URL, {
             method: "POST",
             headers: { ...apiHeaders(), "X-Session-Id": widgetSessionId },
             body: JSON.stringify({ text: chunk }),
             signal: activeCall.abort.signal,
           });
           if (!response.ok) throw new Error("tts " + response.status);
+          if (streamPcm) return response.body;
           return await activeCall.audio.decodeAudioData(await response.arrayBuffer());
         } catch (e) {
           if (!isActive(activeCall)) return null;
           failCall(activeCall, "ElevenLabs сейчас не отвечает. Проверьте подключение и начните звонок снова.");
           return null;
+        }
+      }
+
+      // PCM16-LE, mono, 24 kHz. Network chunks can split a sample in half.
+      async function playPcm(activeCall, stream) {
+        const reader = stream.getReader(), audio = activeCall.audio;
+        const sources = new Set();
+        let stopped = false, carry = null, next = audio.currentTime;
+        let drained = Promise.resolve(), samplesPlayed = 0;
+        const player = {stop() {
+          stopped = true;
+          reader.cancel().catch(() => {});
+          for (const node of sources) node.stop();
+        }};
+        activeCall.source = player;
+        try {
+          while (!stopped) {
+            const {value, done} = await reader.read();
+            if (done || stopped) break;
+            let bytes = value;
+            if (carry !== null) {
+              bytes = new Uint8Array(value.length + 1);
+              bytes[0] = carry;
+              bytes.set(value, 1);
+            }
+            carry = bytes.length % 2 ? bytes[bytes.length - 1] : null;
+            const count = Math.floor(bytes.length / 2);
+            if (!count) continue;
+            const buffer = audio.createBuffer(1, count, 24000);
+            const channel = buffer.getChannelData(0);
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            for (let i = 0; i < count; i++) channel[i] = view.getInt16(i * 2, true) / 32768;
+            const source = audio.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audio.destination);
+            sources.add(source);
+            drained = new Promise(resolve => { source.onended = () => {
+              sources.delete(source); source.disconnect(); resolve();
+            }; });
+            next = Math.max(audio.currentTime + 0.012, next);
+            source.start(next);
+            samplesPlayed += count;
+            if (activeCall.turnStartedAt) {
+              const onset = channel.findIndex(sample => Math.abs(sample) >= 0.012);
+              if (onset >= 0) {
+                const ts = audio.getOutputTimestamp?.();
+                const outputAt = ts?.performanceTime
+                  ? ts.performanceTime + 1000 * (next + onset / 24000 - ts.contextTime)
+                  : performance.now() + 1000 * (next + onset / 24000 - audio.currentTime);
+                window.voiceAgentLastLatencyMs = Math.round(outputAt - activeCall.turnStartedAt);
+                document.getElementById("turnLatency").textContent = (window.voiceAgentLastLatencyMs / 1000).toFixed(2) + " с";
+                console.info("voice_agent_first_audio_ms=" + window.voiceAgentLastLatencyMs);
+                activeCall.turnStartedAt = 0;
+              }
+            }
+            next += buffer.duration;
+          }
+          if (!stopped && (!samplesPlayed || carry !== null)) throw Error("Incomplete PCM");
+          await drained;
+        } catch (error) {
+          player.stop();
+          if (isActive(activeCall)) failCall(activeCall, "Поток голоса прервался.");
+        } finally {
+          reader.releaseLock();
+          if (activeCall.source === player) activeCall.source = null;
         }
       }
 
@@ -1295,6 +1368,10 @@
         if (!BARGE_IN_ENABLED || activeCall.muted || !isActive(activeCall)) return;
         teardownRecognition();
         activeCall.bargeActive = true;
+        if (activeCall.stt === "server" && activeCall.mic) {
+          listenServer(activeCall, { bargeText: spokenText });
+          return;
+        }
 
         const rec = new SpeechRecognitionImpl();
         rec.lang = "ru-RU";
@@ -1309,6 +1386,7 @@
         let minConfidence = 1;
 
         rec.onresult = (event) => {
+          activeCall.openingSpeech = true;
           let heard = "";
           finalText = "";
           minConfidence = 1;
@@ -1326,6 +1404,8 @@
             if (heard.trim().length < BARGE_MIN_CHARS || wordCount < BARGE_MIN_WORDS || isEcho(heard, spokenText)) return;
             triggered = true;
             activeCall.interrupted = true;
+            activeCall.turnEpoch = (activeCall.turnEpoch || 0) + 1;
+            activeCall.turnController?.abort();
             stopPlayback(activeCall);
             setPhase("listening");
             // Chrome иногда не закрывает распознавание сам — без этого звонок «замирает»
@@ -1381,7 +1461,8 @@
       }
 
       async function speak(activeCall, text, { interruptible = true, prefetched = null } = {}) {
-        const chunks = splitForSpeech(text);
+        const epoch = activeCall.turnEpoch;
+        const chunks = prefetched ? [text] : splitForSpeech(text);
         activeCall.interrupted = false;
         if (interruptible) startBargeIn(activeCall, text);
         try {
@@ -1391,13 +1472,17 @@
             if (!isActive(activeCall) || activeCall.interrupted) return;
             const buffer = pending ? await pending : null;
             pending = activeCall.voice === "server" && i + 1 < chunks.length ? fetchSpeech(activeCall, chunks[i + 1]) : null;
-            if (!isActive(activeCall) || activeCall.interrupted) return;
-            if (buffer) await playBuffer(activeCall, buffer);
+            if (!isActive(activeCall) || activeCall.interrupted || activeCall.turnEpoch !== epoch) {
+              await buffer?.cancel?.();
+              return;
+            }
+            if (buffer?.getReader) await playPcm(activeCall, buffer);
+            else if (buffer) await playBuffer(activeCall, buffer);
             else return;
           }
         } finally {
           // договорила сама — барж-распознавание больше не нужно; перебили — оно дослушивает абонента
-          if (!activeCall.interrupted) {
+          if (!activeCall.interrupted && epoch === activeCall.turnEpoch) {
             activeCall.bargeActive = false;
             teardownRecognition();
           }
@@ -1421,7 +1506,7 @@
         }
       }
 
-      // микрофон открываем один раз на звонок: фильтр низких частот + ворота по громкости
+      // Микрофон открыт весь звонок: VAD определяет границы, но не обрезает аудио.
       async function ensureMic(activeCall) {
         if (activeCall.mic) return activeCall.mic;
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -1438,34 +1523,26 @@
         highpass.frequency.value = 120;
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
-        const gain = ctx.createGain();
-        gain.gain.value = 0;
         const out = ctx.createMediaStreamDestination();
         source.connect(highpass);
         highpass.connect(analyser);
-        highpass.connect(gain);
-        gain.connect(out);
+        highpass.connect(out);
 
         const mic = { stream: out.stream, lastLoud: 0, destroy: null };
         const buf = new Float32Array(analyser.fftSize);
-        const t0 = performance.now();
-        let ambient = 0;
-        let threshold = VAD_MIN_LEVEL;
+        let ambient = VAD_MIN_LEVEL / VAD_FACTOR;
         const timerId = setInterval(() => {
           analyser.getFloatTimeDomainData(buf);
           let sum = 0;
           for (const v of buf) sum += v * v;
           const rms = Math.sqrt(sum / buf.length);
           const now = performance.now();
-          const calibrating = now - t0 < VAD_CALIBRATE_MS;
-          if (calibrating) {
-            ambient = Math.max(ambient, rms);
-            threshold = Math.max(VAD_MIN_LEVEL, ambient * VAD_FACTOR);
-          } else if (rms > threshold) {
+          const threshold = Math.max(VAD_MIN_LEVEL, ambient * VAD_FACTOR);
+          if (rms > threshold) {
             mic.lastLoud = now;
+          } else {
+            ambient = ambient * 0.98 + rms * 0.02;
           }
-          const open = !calibrating && now - mic.lastLoud < VAD_HOLD_MS;
-          gain.gain.setTargetAtTime(open ? 1 : 0, ctx.currentTime, 0.02);
         }, VAD_POLL_MS);
         mic.destroy = () => {
           clearInterval(timerId);
@@ -1476,29 +1553,34 @@
       }
 
       async function transcribe(activeCall, blob) {
-        const response = await fetch(STT_URL, {
-          method: "POST",
-          headers: { "Content-Type": blob.type || "audio/webm", "X-API-Key": keyInput.value.trim(), "X-Session-Id": widgetSessionId },
-          body: blob,
-          signal: activeCall.abort.signal,
-        });
-        if (!response.ok) throw new Error("stt " + response.status);
-        return ((await response.json()).text || "").trim();
+        const signal = activeCall.abort.signal;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const response = await fetch(STT_URL, {
+              method: "POST",
+              headers: { "Content-Type": blob.type || "audio/webm", "X-API-Key": keyInput.value.trim(), "X-Session-Id": widgetSessionId },
+              body: blob, signal,
+            });
+            if (!response.ok) throw Object.assign(new Error("stt " + response.status), {status: response.status});
+            if (attempt) showNotice("");
+            return ((await response.json()).text || "").trim();
+          } catch (error) {
+            const transient = error instanceof TypeError || [502, 503, 504].includes(error.status);
+            if (signal.aborted || !transient || attempt) throw error;
+            showNotice("Повторно отправляю вашу фразу на распознавание…");
+            await sleep(350);
+            if (signal.aborted) throw error;
+          }
+        }
       }
 
-      function fallbackToBrowserStt(activeCall) {
-        activeCall.stt = "browser";
-        showNotice("Серверное распознавание недоступно — слушаю браузером.");
-        listen(activeCall);
-      }
-
-      function listenServer(activeCall) {
+      function listenServer(activeCall, { bargeText = "" } = {}) {
         const mic = activeCall.mic;
         let recorder;
         try {
           recorder = new MediaRecorder(mic.stream);
         } catch (e) {
-          fallbackToBrowserStt(activeCall);
+          failCall(activeCall, "Не удалось включить запись микрофона. Проверьте доступ к микрофону.");
           return;
         }
         const chunks = [];
@@ -1507,12 +1589,14 @@
         let speechStart = 0;
         let cancelled = false;
         let pollId = null;
+        let interrupted = false;
 
         const finish = (send) => {
           clearInterval(pollId);
           serverListener = null;
           recorder.onstop = async () => {
             if (cancelled || !isActive(activeCall)) return;
+            if (bargeText) activeCall.bargeActive = false;
             if (!send) {
               listen(activeCall);
               return;
@@ -1524,17 +1608,30 @@
               text = await transcribe(activeCall, new Blob(chunks, { type: recorder.mimeType }));
             } catch (e) {
               if (!isActive(activeCall)) return;
-              fallbackToBrowserStt(activeCall);
+              activeCall.busy = false;
+              activeCall.interrupted = false;
+              if (e.status === 401 || e.status === 403) {
+                failCall(activeCall, "Сервер отклонил ключ доступа к звонку.");
+                return;
+              }
+              showNotice("Не удалось распознать эту фразу. Повторите её, пожалуйста.");
+              listen(activeCall);
               return;
             }
             if (!isActive(activeCall)) return;
-            if (text.length < STT_MIN_CHARS) {
+            const words = (s) => s.toLowerCase().replace(/[^а-яёa-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+            const heardWords = words(text), spokenWords = new Set(words(bargeText));
+            const echo = bargeText && heardWords.length > 0 && heardWords.filter(w => spokenWords.has(w)).length / heardWords.length >= 0.85;
+            if (text.length < STT_MIN_CHARS || echo) {
+              activeCall.interrupted = false;
+              activeCall.busy = false;
               showCaption("", "");
               listen(activeCall);
               return;
             }
             activeCall.failures = 0;
             activeCall.uncertain = false;
+            showNotice("");
             handleUserTurn(activeCall, text);
           };
           try {
@@ -1549,9 +1646,18 @@
             if (now - startedAt > VAD_IDLE_RESTART_MS) finish(false);
             return;
           }
+          if (bargeText && !interrupted && mic.lastLoud - speechStart >= 120) {
+            interrupted = true;
+            activeCall.interrupted = true;
+            activeCall.turnEpoch = (activeCall.turnEpoch || 0) + 1;
+            activeCall.turnController?.abort();
+            stopPlayback(activeCall);
+            setPhase("listening");
+          }
           const silentFor = now - mic.lastLoud;
           if (silentFor >= VAD_END_SILENCE_MS || now - speechStart > VAD_MAX_UTTERANCE_MS) {
-            finish(mic.lastLoud - speechStart >= VAD_MIN_SPEECH_MS);
+            activeCall.lastSpeechAt = mic.lastLoud;
+            finish(mic.lastLoud - speechStart >= VAD_MIN_SPEECH_MS || interrupted);
           }
         }, VAD_POLL_MS);
 
@@ -1565,7 +1671,7 @@
           },
         };
         recorder.start();
-        setPhase("listening");
+        if (!bargeText) setPhase("listening");
       }
 
       // --- распознавание речи ---------------------------------------------
@@ -1610,6 +1716,7 @@
         let minConfidence = 1;
 
         rec.onresult = (event) => {
+          activeCall.openingSpeech = true;
           let interim = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
@@ -1756,8 +1863,33 @@
         }
       }
 
+      async function requestHuman(activeCall) {
+        if (!activeCall || activeCall.holding || !isActive(activeCall)) return;
+        activeCall.holding = activeCall.busy = true;
+        activeCall.turnEpoch = (activeCall.turnEpoch || 0) + 1;
+        activeCall.turnController?.abort();
+        teardownRecognition();
+        stopPlayback(activeCall);
+        const message = "Перевожу на менеджера. Оставайтесь на линии.";
+        showCaption(agentName, message);
+        await speak(activeCall, message, {interruptible:false});
+        if (!isActive(activeCall)) return;
+        const mic = activeCall.mic || await ensureMic(activeCall);
+        if (!isActive(activeCall)) return;
+        if (!mic) return failCall(activeCall, "Для разговора нужен микрофон.");
+        activeCall.closeLive = connectLiveCall("caller", keyInput.value.trim(), null, mic.stream,
+          text => showCaption("Линия", text),
+          () => { if (isActive(activeCall)) finishCall(activeCall, "Соединение с менеджером завершено"); });
+      }
+
       async function handleUserTurn(activeCall, text) {
-        activeCall.turnStartedAt = activeCall.lastSpeechAt || performance.now();
+        if (activeCall.holding) return;
+        if (/(?:соедини|переведи|переключи|позови|позовите|хочу поговорить|можно поговорить|нужен живой|дайте)(?:.{0,30})(?:менеджер|оператор|человек|специалист)/iu.test(text) && !/не (?:соедин|перевод|переключ|хочу|нужен)/iu.test(text)) {
+          return requestHuman(activeCall);
+        }
+        const epoch = activeCall.turnEpoch = (activeCall.turnEpoch || 0) + 1;
+        activeCall.interrupted = false;
+        activeCall.turnStartedAt = activeCall.lastSpeechAt || 0;
         activeCall.lastSpeechAt = 0;
         activeCall.busy = true; // пока агент думает и говорит, микрофон не слушаем
         teardownRecognition();
@@ -1768,18 +1900,22 @@
         let spokenText = "";
         let playback = Promise.resolve();
         const result = await requestAgentEvents(activeCall, text, (sentence) => {
-          if (!isActive(activeCall)) return;
+          if (!isActive(activeCall) || epoch !== activeCall.turnEpoch) return;
           spokenText += (spokenText ? " " : "") + sentence;
           const audio = fetchSpeech(activeCall, sentence);
           playback = playback.then(async () => {
-            if (!isActive(activeCall) || activeCall.interrupted) return;
+            if (!isActive(activeCall) || activeCall.interrupted || epoch !== activeCall.turnEpoch) {
+              const discarded = await audio;
+              await discarded?.cancel?.();
+              return;
+            }
             showCaption(agentName, sentence);
             setPhase("speaking");
             await speak(activeCall, sentence, { prefetched: audio });
           });
         });
         await playback;
-        if (!isActive(activeCall)) return;
+        if (!isActive(activeCall) || epoch !== activeCall.turnEpoch) return;
         if (result.interrupted) return;
         if (result.fatal) {
           failCall(activeCall, result.fatal);
@@ -1886,7 +2022,20 @@
           if (!isActive(activeCall)) return;
         }
 
+        if (activeCall.stt !== "server" && !STT_FORCE_BROWSER) {
+          failCall(activeCall, "Не удалось включить серверное распознавание. Проверьте микрофон и подключение к стенду.");
+          return;
+        }
+        document.getElementById("live-manager").hidden = false;
         startTimer(activeCall);
+        activeCall.busy = false;
+        const openingAt = performance.now();
+        listen(activeCall);
+        await sleep(OPENING_LISTEN_MS);
+        if (!isActive(activeCall) || activeCall.busy || activeCall.muted) return;
+        if ((activeCall.mic && activeCall.mic.lastLoud >= openingAt) || activeCall.openingSpeech) return;
+        activeCall.busy = true;
+        teardownRecognition();
         showCaption(agentName, GREETING);
         setPhase("speaking");
         await speak(activeCall, GREETING);
@@ -1902,7 +2051,9 @@
       }
 
       function teardownCall(activeCall) {
+        document.getElementById("live-manager").hidden = true;
         activeCall.ended = true;
+        activeCall.closeLive?.();
         if (activeCall.turnController) activeCall.turnController.abort();
         clearInterval(activeCall.timerId);
         activeCall.abort.abort();
@@ -1936,7 +2087,10 @@
 
       // --- микрофон -------------------------------------------------------
       function setMuted(muted) {
-        if (call) call.muted = muted;
+        if (call) {
+          call.muted = muted;
+          for (const track of call.mic?.stream.getAudioTracks() || []) track.enabled = !muted;
+        }
         widget.dataset.muted = String(muted);
         muteBtn.setAttribute("aria-pressed", String(muted));
         muteBtn.setAttribute("aria-label", muted ? "Включить микрофон" : "Выключить микрофон");
@@ -1999,6 +2153,7 @@
         settingsEl.hidden = !open;
         settingsBtn.setAttribute("aria-expanded", String(open));
       });
+      $("live-manager").onclick = () => requestHuman(call);
       startBtn.addEventListener("click", startCall);
       endBtn.addEventListener("click", () => {
         if (call) finishCall(call);

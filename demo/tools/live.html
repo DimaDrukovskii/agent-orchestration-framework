@@ -1,0 +1,34 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Линия менеджера</title><style>body{max-width:36rem;margin:4rem auto;padding:1rem;font:18px system-ui}button,input{font:inherit;padding:.55rem;margin:.3rem}li{margin:.6rem}</style>
+<h1>Линия менеджера</h1><form><label>Ключ менеджера <input id="key" type="password" required></label><button>Дежурить</button></form>
+<p role="status" id="status"></p><ul id="queue"></ul><button hidden id="hang">Завершить разговор</button>
+<script src="/demo/live-call.js"></script><script>
+const statusEl=document.querySelector('#status'), queue=document.querySelector('#queue'), hang=document.querySelector('#hang');
+let timer, active=false, generation=0;
+async function refresh(key,version) {
+  if(active)return;
+  try {
+    const response=await fetch('/api/live/waiting',{headers:{'X-API-Key':key}});
+    if(!response.ok)throw Error('Проверьте ключ менеджера');
+    const rooms=await response.json();
+    if(version!==generation||active)return;
+    queue.replaceChildren();statusEl.textContent=rooms.length?'Входящий вызов':'Ожидание вызова';
+    for(const room of rooms){
+      const button=document.createElement('button');button.textContent='Принять вызов '+room.slice(0,5);
+      button.onclick=async()=>{
+        if(active)return;active=true;queue.replaceChildren();
+        let mic;
+        try{
+          mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true}});
+          hang.hidden=false;
+          hang.onclick=connectLiveCall('manager',key,room,mic,t=>statusEl.textContent=t,()=>{
+            mic.getTracks().forEach(t=>t.stop());active=false;hang.hidden=true;statusEl.textContent='Разговор завершён';
+          });
+        }catch{mic?.getTracks().forEach(t=>t.stop());active=false;hang.hidden=true;statusEl.textContent='Проверьте доступ к микрофону';}
+      };
+      queue.append(button);
+    }
+  }catch(error){statusEl.textContent=error.message;}
+}
+document.querySelector('form').onsubmit=e=>{e.preventDefault();if(active)return;clearInterval(timer);const version=++generation,key=document.querySelector('#key').value;refresh(key,version);timer=setInterval(()=>refresh(key,version),2000);};
+</script></html>

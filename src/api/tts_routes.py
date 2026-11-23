@@ -7,7 +7,7 @@ X-API-Key, как и для /api/hermes/dialog.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.api.auth import verify_api_key
@@ -51,3 +51,12 @@ async def synthesize(request: TTSRequest, http: Request):
     if not audio:
         raise _error(503, "tts_not_configured", "Серверная озвучка не настроена", False)
     return Response(content=audio, media_type="audio/mpeg")
+
+
+@router.post("/tts/pcm")
+async def stream_voice(request: TTSRequest):
+    if tts_service.provider != "elevenlabs" or not tts_service.enabled:
+        raise _error(503, "tts_not_configured", "Потоковый голос недоступен", False)
+    return StreamingResponse(tts_service.stream_browser_pcm(request.text),
+                             media_type="application/octet-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

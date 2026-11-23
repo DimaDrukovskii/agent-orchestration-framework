@@ -22,7 +22,7 @@ async def send_message(chat_id: str, text: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(url, json=payload)
-            if response.is_success:
+            if response.is_success and response.json().get("ok") is True:
                 return True
             # в тексте исключения httpx есть URL с токеном бота — его в логи не пишем
             try:

@@ -164,13 +164,21 @@ def apply_tool(name: str, tool_input: Dict[str, Any], state: Dict[str, Any]) -> 
     return result
 
 
-def escalation_result(messages: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def escalation_result(messages: List[Dict[str, Any]], caller_phone: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Очевидная просьба о человеке в последней реплике: итог хода без обращения к модели."""
     last = next((m["content"] for m in reversed(messages) if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
     found = escalation_intent(last)
     if not found:
         return None
     department, reason, phrase = found
+    if caller_phone == "":
+        user_text = " ".join(m.get('content', '') for m in messages
+                             if m.get('role') == 'user' and isinstance(m.get('content'), str))
+        if re.search(r'(?:\+?\d[\s()\-]*){7,15}', user_text):
+            return None  # Let the agent use the contact already supplied, rather than asking again.
+        phrase = "Конечно. Чтобы менеджер мог вам перезвонить, подскажите контактный номер."
+        return {"response": phrase, "messages": messages + [{"role": "assistant", "content": phrase}],
+                "pending_transfer": None, "handoff_card": None, "chat": [], "links": []}
     state = new_turn_state()
     apply_tool("transfer_to_department", {"department": department, "reason": reason}, state)
     return {"response": phrase, "messages": messages + [{"role": "assistant", "content": phrase}],
@@ -368,7 +376,7 @@ class HermesAgent:
             yield {"type": "done", "result": {"response": TURN_CAP_REPLY, "messages": working, "pending_transfer": None, "chat": [], "links": []}}
             return
 
-        shortcut = escalation_result(working)  # очевидная просьба о человеке: переводим сразу, без ожидания модели
+        shortcut = escalation_result(working, caller_phone)
         if shortcut:
             yield {"type": "sentence", "text": shortcut["response"]}
             yield {"type": "done", "result": shortcut}
@@ -488,7 +496,7 @@ class HermesAgent:
             working_messages.append({"role": "assistant", "content": TURN_CAP_REPLY})
             return {"response": TURN_CAP_REPLY, "messages": working_messages, "pending_transfer": None}
 
-        shortcut = escalation_result(working_messages)
+        shortcut = escalation_result(working_messages, caller_phone)
         if shortcut:
             return shortcut
 

@@ -103,7 +103,9 @@ async def test_elevenlabs_stream_uses_configured_voice_model_and_phone_codec(mon
         assert request.url.path == "/v1/text-to-speech/fixture-voice/stream"
         assert request.url.params["output_format"] == "ulaw_8000"
         assert request.headers["xi-api-key"] == "fixture-key"
-        assert json.loads(request.content)["model_id"] == "eleven_flash_v2_5"
+        payload = json.loads(request.content)
+        assert payload["model_id"] == "eleven_flash_v2_5"
+        assert payload["voice_settings"]["speed"] == settings.tts_speed
         return httpx.Response(200, stream=Audio())
 
     client_type = httpx.AsyncClient

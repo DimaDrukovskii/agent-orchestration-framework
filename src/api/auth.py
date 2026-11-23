@@ -7,6 +7,7 @@ AGENT_API_KEY). Это осознанно просто — см. docs/mts/SCALIN
 """
 
 from typing import Optional
+import secrets
 from fastapi import Header, HTTPException, status
 from src.config import settings
 from src.utils import logger
@@ -28,4 +29,13 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Ke
         _reject("missing X-API-Key")
     if x_api_key != settings.agent_api_key:
         _reject("invalid X-API-Key")
+    return x_api_key
+
+
+async def verify_manager_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> str:
+    expected = settings.manager_api_key
+    if not expected or expected == settings.agent_api_key:
+        raise HTTPException(503, detail="Для панели нужен отдельный MANAGER_API_KEY на сервере")
+    if not x_api_key or not secrets.compare_digest(x_api_key.encode(), expected.encode()):
+        _reject("invalid manager key")
     return x_api_key

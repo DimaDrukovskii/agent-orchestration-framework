@@ -2,11 +2,13 @@ import json
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from src.config import settings
 from typing import List, Literal, Optional, Dict, Any
 from anthropic import APITimeoutError
 from openai import APIStatusError, APITimeoutError as OpenAITimeoutError
 from redis.exceptions import RedisError
+from src.services.session_guard import SessionBusy
 from src.services import dialog
 from src.api.auth import verify_api_key
 from src.services.analytics import session_var
@@ -20,6 +22,13 @@ class HermesDialogRequest(BaseModel):
     caller_phone: str
     user_message: str
     model_profile: Optional[Literal["default", "hermes_agent"]] = None
+
+    @field_validator("model_profile")
+    @classmethod
+    def public_travel_profile(cls, value):
+        if value == "hermes_agent" and settings.tenant == "far_east_travel":
+            raise ValueError("Для голосовой линии доступен только профиль консультации")
+        return value
 
 
 class HermesDialogResponse(BaseModel):
@@ -62,6 +71,8 @@ async def hermes_dialog(request: HermesDialogRequest):
             persisted=turn["persisted"],
         )
 
+    except SessionBusy:
+        raise _unavailable("session_busy", "Предыдущая реплика ещё обрабатывается")
     except (APITimeoutError, OpenAITimeoutError) as e:
         logger.error(f"[{request.session_id}] LLM timeout: {str(e)}")
         raise _unavailable("agent_timeout", "Агент не ответил вовремя")
@@ -84,33 +95,18 @@ async def hermes_dialog(request: HermesDialogRequest):
 async def hermes_dialog_stream(request: HermesDialogRequest):
     """
     Streaming-версия — для живого эффекта "печатает в реальном времени".
-    Без tool calls (см. ограничение в HermesAgent.run_streaming).
+    Совместимый текстовый формат поверх общего цикла инструментов и сохранения.
     """
-    try:
-        history = await dialog._get_session(request.session_id)
-        history.append({"role": "user", "content": request.user_message})
+    session_var.set(request.session_id)
 
-        async def token_generator():
-            full_response = ""
-            async for chunk in dialog.agent_for(request.model_profile).run_streaming(messages=history, caller_phone=request.caller_phone):
-                full_response += chunk
-                yield chunk
+    async def token_generator():
+        async for event in dialog.run_turn_stream(
+            request.session_id, request.caller_phone, request.user_message, request.model_profile
+        ):
+            if event["type"] == "sentence":
+                yield event["text"] + " "
 
-            history.append({"role": "assistant", "content": full_response})
-            await dialog._save_session(request.session_id, request.caller_phone, history)
-            await dialog._persist_turn(
-                session_id=request.session_id,
-                caller_phone=request.caller_phone,
-                messages=history,
-                agent_response=full_response,
-                pending_transfer=None
-            )
-
-        return StreamingResponse(token_generator(), media_type="text/plain")
-
-    except Exception as e:
-        logger.error(f"Hermes stream error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return StreamingResponse(token_generator(), media_type="text/plain")
 
 
 @router.post("/hermes/dialog/events")

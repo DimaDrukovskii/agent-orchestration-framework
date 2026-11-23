@@ -157,8 +157,8 @@ def test_turn_is_saved_only_when_the_stream_completes(monkeypatch):
 
     class Agent:
         async def run_stream(self, history, phone):
-            yield {"type": "sentence", "text": "Привет."}
-            yield {"type": "done", "result": {"response": "Привет.", "messages": history + [{"role": "assistant", "content": "Привет."}],
+            yield {"type": "sentence", "text": "Слушаю вас."}
+            yield {"type": "done", "result": {"response": "Слушаю вас.", "messages": history + [{"role": "assistant", "content": "Слушаю вас."}],
                                               "pending_transfer": None, "chat": [], "links": []}}
 
     async def persist(**kw):
@@ -178,7 +178,7 @@ def test_turn_is_saved_only_when_the_stream_completes(monkeypatch):
         return [e async for e in stream]
 
     rest = asyncio.run(go())
-    assert rest[-1]["type"] == "done" and saved["messages"][-1]["content"] == "Привет."
+    assert rest[-1]["type"] == "done" and saved["messages"][-1]["content"] == "Слушаю вас."
 
 
 # --- живое поведение звонка ------------------------------------------------------------------
